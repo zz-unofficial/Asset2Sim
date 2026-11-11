@@ -205,6 +205,18 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Asset2Sim: local weights, generated assets, environment and disposable experiments
+/.local/
+/.conda/
+/data/generated/
+/data/raw/
+/data/processed/
+/results/raw/
+/results/assets/
+/results/videos/
+/checkpoints/
+/models/
+
 # Ruff stuff:
 .ruff_cache/
 

@@ -1,0 +1,6 @@
+name: sf3d_debug
+model: sf3d
+model_config: ../models/sf3d.yaml
+manifest: ../../data/manifests/debug.jsonl
+overrides: {}
+

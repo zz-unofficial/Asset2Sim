@@ -1,0 +1,42 @@
+[
+  {
+    "object_id": "debug_box",
+    "category": "convex",
+    "reference_mesh": "reference/debug_box.glb",
+    "source": "Asset2Sim procedural debug geometry",
+    "license": "CC0-1.0",
+    "units": "meters",
+    "longest_dimension_m": 0.2,
+    "world_axes": "+Z up, right-handed"
+  },
+  {
+    "object_id": "debug_cup",
+    "category": "concave",
+    "reference_mesh": "reference/debug_cup.glb",
+    "source": "Asset2Sim procedural debug geometry",
+    "license": "CC0-1.0",
+    "units": "meters",
+    "longest_dimension_m": 0.2,
+    "world_axes": "+Z up, right-handed"
+  },
+  {
+    "object_id": "debug_ring",
+    "category": "through_hole",
+    "reference_mesh": "reference/debug_ring.glb",
+    "source": "Asset2Sim procedural debug geometry",
+    "license": "CC0-1.0",
+    "units": "meters",
+    "longest_dimension_m": 0.2,
+    "world_axes": "+Z up, right-handed"
+  },
+  {
+    "object_id": "debug_bracket",
+    "category": "slender",
+    "reference_mesh": "reference/debug_bracket.glb",
+    "source": "Asset2Sim procedural debug geometry",
+    "license": "CC0-1.0",
+    "units": "meters",
+    "longest_dimension_m": 0.2,
+    "world_axes": "+Z up, right-handed"
+  }
+]

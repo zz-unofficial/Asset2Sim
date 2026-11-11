@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69.5.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asset2sim"
+version = "0.1.0"
+description = "Reproducible generation and simulation evaluation of 3D assets"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+data = ["Pillow>=10", "numpy>=1.26,<3", "trimesh>=4.4,<5", "pyrender==0.1.45", "shapely>=2,<3", "mapbox-earcut>=1,<2"]
+dev = ["pytest>=8,<9", "ruff>=0.8,<1"]
+
+[project.scripts]
+asset2sim = "asset2sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["third_party", "data", "results"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

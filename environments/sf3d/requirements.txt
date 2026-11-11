@@ -1,0 +1,25 @@
+# Upstream inference dependencies; local extensions are built by setup_sf3d.sh.
+einops==0.7.0
+jaxtyping==0.2.31
+omegaconf==2.3.0
+transformers==4.42.3
+open_clip_torch==2.24.0
+trimesh==4.4.1
+numpy==1.26.4
+huggingface-hub==0.23.4
+rembg==2.0.57
+onnxruntime==1.20.1
+opencv-python-headless==4.10.0.84
+Pillow==10.4.0
+pynanoinstantmeshes==0.0.3
+gpytoolbox==0.2.0
+setuptools==69.5.1
+wheel
+timm==0.9.16
+safetensors>=0.4.3
+pyrender==0.1.45
+shapely>=2,<3
+mapbox-earcut>=1,<2
+pytest>=8,<9
+ruff>=0.8,<1
+
