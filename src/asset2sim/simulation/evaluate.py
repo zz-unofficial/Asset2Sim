@@ -16,7 +16,7 @@ import yaml
 from asset2sim.collision import build_collision
 from asset2sim.geometry.prepare import PreparationOptions, prepare_mesh
 from asset2sim.paths import PROJECT_ROOT
-from asset2sim.simulation.reference import distance_to_solid, trajectories
+from asset2sim.simulation.reference import distance_to_solid, reference_category, trajectories
 from asset2sim.simulation.scene import make_scene
 
 
@@ -49,12 +49,19 @@ def _probe_results(model, data):
         "geometric_contact": any(c.dist <= 0 for c in contacts),
         "solver_active": any(c.efc_address >= 0 for c in contacts),
         "buffer_only": bool(contacts) and all(c.dist > 0 for c in contacts),
+        "inactive_only": bool(contacts) and all(c.efc_address < 0 for c in contacts),
         "contact_count": len(contacts),
     }
 
 
 def evaluate_trajectory(
-    model, config, object_id: str, condition: str, name: str, x_offset: float
+    model,
+    config,
+    object_id: str,
+    condition: str,
+    name: str,
+    x_offset: float,
+    z_offset: float = 0.0,
 ) -> tuple[list[dict], list[dict]]:
     start, end = config["trajectory_start_y_m"], config["trajectory_end_y_m"]
     radius, repeats = config["probe_radius_m"], config["timing_repeats"]
@@ -63,7 +70,7 @@ def evaluate_trajectory(
     data = mujoco.MjData(model)
     samples = []
     for index, y in enumerate(np.linspace(start, end, config["trajectory_samples"])):
-        point = np.array([x_offset, y, 0.0])
+        point = np.array([x_offset, y, z_offset])
         signed = distance_to_solid(object_id, point) - radius
         valid = abs(signed) > config["reference_tolerance_m"]
         reference = signed < 0
@@ -82,10 +89,14 @@ def evaluate_trajectory(
                 "sample_index": index,
                 "x_m": x_offset,
                 "y_m": float(y),
-                "z_m": 0.0,
+                "z_m": z_offset,
+                "probe_radius_m": radius,
                 "reference_distance_to_solid_m": float(signed + radius),
                 "reference_contact": reference,
                 "reference_valid": valid,
+                "reference_category": reference_category(
+                    object_id, point, radius, config["reference_tolerance_m"]
+                ),
                 **_probe_results(model, data),
                 "forward_mean_s": float(np.mean(timings)),
                 "forward_repeats": repeats,
@@ -114,6 +125,9 @@ def evaluate_trajectory(
                 "object": object_id,
                 "condition": condition,
                 "trajectory": name,
+                "probe_radius_m": radius,
+                "x_m": x_offset,
+                "z_m": z_offset,
                 "repeat": repeat,
                 "reference_blocked": reference_blocked,
                 "final_y_m": final_position if valid else None,
@@ -151,9 +165,24 @@ def _summary(
         "planned_samples": len(samples),
         "reference_positive": tp + fn,
         "reference_negative": fp + tn,
+        "fully_contained_samples": sum(
+            row["reference_category"] == "fully_contained" for row in valid
+        ),
+        "fully_contained_fn": sum(
+            row["reference_category"] == "fully_contained" and not row["geometric_contact"]
+            for row in valid
+        ),
+        "boundary_overlap_samples": sum(
+            row["reference_category"] == "boundary_overlap" for row in valid
+        ),
+        "boundary_overlap_fn": sum(
+            row["reference_category"] == "boundary_overlap" and not row["geometric_contact"]
+            for row in valid
+        ),
         "fpr": fp / (fp + tn) if fp + tn else None,
         "fnr": fn / (fn + tp) if fn + tp else None,
         "buffer_only_samples": sum(row["buffer_only"] for row in valid),
+        "inactive_only_samples": sum(row["inactive_only"] for row in valid),
         "solver_active_samples": sum(row["solver_active"] for row in valid),
         "valid_trials": len(valid_trials),
         "planned_trials": len(trials),
@@ -180,6 +209,9 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
     """Build fresh collision assets and evaluate all configured conditions in one run."""
     output = Path(output).resolve()
     config = yaml.safe_load(Path(config_path).read_text())
+    if "extends" in config:
+        base = yaml.safe_load((Path(config_path).parent / config.pop("extends")).read_text())
+        config = {**base, **config}
     if config["body_mode"] != "static":
         raise ValueError("Controlled trajectory comparisons require a static object")
     if (
@@ -191,6 +223,39 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
         or config["drive_steps"] > config["simulation_steps"]
     ):
         raise ValueError("Invalid sampling, timing, or simulation count")
+    profiles = config.get(
+        "contact_profiles",
+        [
+            {
+                "name": "default",
+                "margin_m": config["contact_margin_m"],
+                "gap_m": config["contact_gap_m"],
+            }
+        ],
+    )
+    names = [profile["name"] for profile in profiles]
+    if (
+        not profiles
+        or len(names) != len(set(names))
+        or any(not name or Path(name).name != name or name in {".", ".."} for name in names)
+    ):
+        raise ValueError("Contact profile names must be unique and safe")
+    for profile in profiles:
+        margin, gap = profile["margin_m"], profile["gap_m"]
+        if not np.isfinite([margin, gap]).all() or not 0 <= gap <= margin:
+            raise ValueError("MuJoCo 3.3.5 requires finite 0 <= gap <= margin")
+    for object_id, cases in config.get("probe_cases", {}).items():
+        names = [case["name"] for case in cases]
+        if (
+            not cases
+            or len(names) != len(set(names))
+            or any(not name or Path(name).name != name or name in {".", ".."} for name in names)
+        ):
+            raise ValueError(f"Probe case names must be unique and safe: {object_id}")
+        for case in cases:
+            values = [case["radius_m"], case["x_m"], case.get("z_m", 0.0)]
+            if not np.isfinite(values).all() or case["radius_m"] <= 0:
+                raise ValueError(f"Probe radius and position invalid: {object_id}")
     output.mkdir(parents=True, exist_ok=False)
     result = {
         "status": "running",
@@ -209,6 +274,7 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
         "definitions": {
             "contact": "detected sphere/mesh signed distance <= 0",
             "buffer_only": "detected contact(s), all signed distances > 0",
+            "inactive_only": "detected contact(s), all efc_address < 0",
             "solver_active": "at least one contact efc_address >= 0",
             "behavior": "finite simulated final probe position within pass tolerance of target",
             "reference": "analytic distance to programmatic 64-sided annulus or normalized box",
@@ -251,7 +317,7 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
                         if repeated["component_count"] != collision["component_count"]:
                             raise ValueError("Repeated builds produced different component counts")
                         build_times.append(repeated["build_seconds"])
-                    samples, trials, validations = [], [], []
+                    dynamic_validations = []
                     if config.get("validate_dynamic_body"):
                         dynamic_model, dynamic_data, dynamic_validation = make_scene(
                             collision_dir,
@@ -267,35 +333,96 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
                             raise ValueError(
                                 "Dynamic free body step produced non-finite coordinates"
                             )
-                        validations.append(
+                        dynamic_validations.append(
                             {"trajectory": "dynamic_load_check", **dynamic_validation}
                         )
-                    for name, x in trajectories(object_id).items():
-                        model, _, validation = make_scene(
-                            collision_dir,
-                            prepared / "normalized.glb",
-                            prepared / "visual.obj",
-                            config,
-                            x,
-                            config["body_mode"],
-                            output / "scenes" / object_id / f"{condition}_{name}.xml",
-                        )
-                        rows, behavior = evaluate_trajectory(
-                            model, config, object_id, condition, name, x
-                        )
-                        samples.extend(rows)
-                        trials.extend(behavior)
-                        validations.append({"trajectory": name, **validation})
-                    samples_all.extend(samples)
-                    trials_all.extend(trials)
-                    result["results"].append(
-                        {
-                            "object": object_id,
-                            "condition": condition,
-                            **_summary(samples, trials, collision, build_times),
-                            "scene_validation": validations,
-                        }
+                    profiles = config.get(
+                        "contact_profiles",
+                        [
+                            {
+                                "name": "default",
+                                "margin_m": config["contact_margin_m"],
+                                "gap_m": config["contact_gap_m"],
+                            }
+                        ],
                     )
+                    cases = config.get("probe_cases", {}).get(object_id)
+                    if cases is None:
+                        cases = [
+                            {
+                                "name": name,
+                                "x_m": x,
+                                "z_m": 0.0,
+                                "radius_m": config["probe_radius_m"],
+                            }
+                            for name, x in trajectories(object_id).items()
+                        ]
+                    for profile in profiles:
+                        samples, trials, validations, case_summaries = (
+                            [],
+                            [],
+                            list(dynamic_validations),
+                            [],
+                        )
+                        for case in cases:
+                            name, x, z = case["name"], case["x_m"], case.get("z_m", 0.0)
+                            local_config = {
+                                **config,
+                                "probe_radius_m": case["radius_m"],
+                                "contact_margin_m": profile["margin_m"],
+                                "contact_gap_m": profile["gap_m"],
+                            }
+                            model, _, validation = make_scene(
+                                collision_dir,
+                                prepared / "normalized.glb",
+                                prepared / "visual.obj",
+                                local_config,
+                                x,
+                                config["body_mode"],
+                                output
+                                / "scenes"
+                                / object_id
+                                / f"{condition}_{profile['name']}_{name}.xml",
+                                z,
+                            )
+                            rows, behavior = evaluate_trajectory(
+                                model, local_config, object_id, condition, name, x, z
+                            )
+                            for row in rows + behavior:
+                                row.update(
+                                    profile=profile["name"],
+                                    margin_m=profile["margin_m"],
+                                    gap_m=profile["gap_m"],
+                                )
+                            samples.extend(rows)
+                            trials.extend(behavior)
+                            case_summaries.append(
+                                {
+                                    "object": object_id,
+                                    "condition": condition,
+                                    "profile": profile["name"],
+                                    "trajectory": name,
+                                    "x_m": x,
+                                    "z_m": z,
+                                    "probe_radius_m": case["radius_m"],
+                                    **_summary(rows, behavior, collision, build_times),
+                                }
+                            )
+                            validations.append({"trajectory": name, **validation})
+                        samples_all.extend(samples)
+                        trials_all.extend(trials)
+                        result["results"].append(
+                            {
+                                "object": object_id,
+                                "condition": condition,
+                                "profile": profile["name"],
+                                "margin_m": profile["margin_m"],
+                                "gap_m": profile["gap_m"],
+                                **_summary(samples, trials, collision, build_times),
+                                "case_summaries": case_summaries,
+                                "scene_validation": validations,
+                            }
+                        )
                 except Exception as error:  # noqa: BLE001
                     result["failures"].append(
                         {
@@ -312,6 +439,8 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
                 "object": row["object"],
                 "condition": row["condition"],
                 "trajectory": row["trajectory"],
+                "profile": row["profile"],
+                "reference_category": row["reference_category"],
                 "sample_index": row["sample_index"],
                 "y_m": row["y_m"],
                 "reference_contact": row["reference_contact"],
@@ -325,9 +454,13 @@ def run_physics_eval(config_path: Path, output: Path) -> dict:
         _write_csv(
             output / "summary.csv",
             [
-                {k: v for k, v in item.items() if k != "scene_validation"}
+                {k: v for k, v in item.items() if k not in {"scene_validation", "case_summaries"}}
                 for item in result["results"]
             ],
+        )
+        _write_csv(
+            output / "case_summary.csv",
+            [case for item in result["results"] for case in item["case_summaries"]],
         )
         (output / "summary.json").write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     return result

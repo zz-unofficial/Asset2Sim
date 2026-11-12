@@ -211,10 +211,7 @@ tempCodeRunnerFile.py
 /data/generated/
 /data/raw/
 /data/processed/
-/results/raw/
-/results/assets/
-/results/physics/
-/results/videos/
+/results/
 /checkpoints/
 /models/
 

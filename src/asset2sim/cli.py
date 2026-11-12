@@ -37,6 +37,12 @@ def main() -> int:
         "--config", type=Path, default=PROJECT_ROOT / "configs/physics/debug.yaml"
     )
     physics_eval.add_argument("--output", type=Path, required=True)
+    physics_index = commands.add_parser("physics-index", help="Index generated assets for physics")
+    physics_index.add_argument("--manifest", type=Path, required=True)
+    physics_index.add_argument("--run", type=Path, required=True)
+    physics_index.add_argument("--assets", type=Path, required=True)
+    physics_index.add_argument("--condition", choices=("C0", "C1", "C2", "C3"), action="append")
+    physics_index.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -75,6 +81,25 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "physics-index":
+            import json
+
+            from asset2sim.simulation.assets import index_generated_assets
+
+            records = index_generated_assets(
+                args.manifest,
+                args.run,
+                args.assets,
+                tuple(args.condition or ("C0", "C1", "C2", "C3")),
+            )
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("x", encoding="utf-8") as stream:
+                json.dump(records, stream, indent=2, ensure_ascii=False)
+                stream.write("\n")
+            print(
+                f"Indexed {sum(row['status'] == 'ready' for row in records)}/{len(records)} samples: {args.output}"
+            )
+            return 0 if all(row["status"] == "ready" for row in records) else 1
         if args.command == "physics-eval":
             from asset2sim.simulation.evaluate import run_physics_eval
 

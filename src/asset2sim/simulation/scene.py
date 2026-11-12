@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -26,6 +27,7 @@ def make_scene(
     x_offset: float = 0.0,
     body_mode: str = "static",
     xml_path: Path | None = None,
+    z_offset: float = 0.0,
 ):
     """Compile a scene and verify all mesh vertices in the physical coordinate frame."""
     record = json.loads((collider_dir / "colliders.json").read_text())
@@ -47,12 +49,23 @@ def make_scene(
         iterations=str(config["solver_iterations"]),
     )
     assets = ET.SubElement(root, "asset")
-    ET.SubElement(assets, "mesh", name="visual_mesh", file=str(visual_obj.resolve()))
+    sources = [("visual_mesh", visual_obj.resolve())]
     for i, component in enumerate(components):
         path = (collider_dir / component["path"]).resolve()
         if path.parent != collider_dir.resolve() or not path.is_file():
             raise ValueError(f"Invalid collision component path: {path}")
-        ET.SubElement(assets, "mesh", name=f"mesh_{i}", file=str(path))
+        sources.append((f"mesh_{i}", path))
+    if xml_path is not None:
+        xml_path.parent.mkdir(parents=True, exist_ok=True)
+        asset_dir = xml_path.parent / f"{xml_path.stem}_assets"
+        asset_dir.mkdir(exist_ok=True)
+        for name, source in sources:
+            dest = asset_dir / f"{name}.obj"
+            shutil.copyfile(source, dest)
+            ET.SubElement(assets, "mesh", name=name, file=f"{asset_dir.name}/{dest.name}")
+    else:
+        for name, source in sources:
+            ET.SubElement(assets, "mesh", name=name, file=str(source))
     world = ET.SubElement(root, "worldbody")
     body = ET.SubElement(world, "body", name="object", pos="0 0 0")
     if body_mode == "dynamic":
@@ -88,7 +101,10 @@ def make_scene(
             rgba="0 0 0 0",
         )
     probe = ET.SubElement(
-        world, "body", name="probe", pos=_numbers([x_offset, config["trajectory_start_y_m"], 0])
+        world,
+        "body",
+        name="probe",
+        pos=_numbers([x_offset, config["trajectory_start_y_m"], z_offset]),
     )
     ET.SubElement(
         probe,
@@ -135,9 +151,12 @@ def make_scene(
     )
     xml = ET.tostring(root, encoding="unicode")
     if xml_path is not None:
-        xml_path.parent.mkdir(parents=True, exist_ok=True)
         xml_path.write_text(xml + "\n")
-    model = mujoco.MjModel.from_xml_string(xml)
+    model = (
+        mujoco.MjModel.from_xml_path(str(xml_path.resolve()))
+        if xml_path is not None
+        else mujoco.MjModel.from_xml_string(xml)
+    )
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     object_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object")

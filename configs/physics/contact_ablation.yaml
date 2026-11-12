@@ -1,0 +1,17 @@
+extends: debug.yaml
+contact_profiles:
+  - {name: buffered, margin_m: 0.004, gap_m: 0.002}
+  - {name: zero, margin_m: 0.0, gap_m: 0.0}
+probe_cases:
+  debug_ring:
+    - {name: center_r05, x_m: 0.0, z_m: 0.0, radius_m: 0.005}
+    - {name: center_r10, x_m: 0.0, z_m: 0.0, radius_m: 0.010}
+    - {name: center_r20, x_m: 0.0, z_m: 0.0, radius_m: 0.020}
+    - {name: hole_offset_r05, x_m: 0.040, z_m: 0.0, radius_m: 0.005}
+    - {name: hole_edge_r10, x_m: 0.048, z_m: 0.0, radius_m: 0.010}
+    - {name: diagonal_r10, x_m: 0.030, z_m: 0.030, radius_m: 0.010}
+    - {name: solid_r10, x_m: 0.0775, z_m: 0.0, radius_m: 0.010}
+    - {name: outside_r10, x_m: 0.120, z_m: 0.0, radius_m: 0.010}
+  debug_box:
+    - {name: solid_r10, x_m: 0.0, z_m: 0.0, radius_m: 0.010}
+    - {name: clear_r10, x_m: 0.120, z_m: 0.0, radius_m: 0.010}

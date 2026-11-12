@@ -42,3 +42,23 @@ def trajectories(object_id: str) -> dict[str, float]:
     if object_id == "debug_box":
         return {"solid": 0.0, "clear": 0.12}
     raise ValueError(f"No trajectories for {object_id}")
+
+
+def reference_category(object_id: str, point: np.ndarray, radius: float, tolerance: float) -> str:
+    """Distinguish a fully embedded sphere from boundary overlap or separation."""
+    point = np.asarray(point, dtype=float)
+    distance = distance_to_solid(object_id, point)
+    if distance >= radius:
+        return "separated"
+    clearance = 0.0
+    if object_id == "debug_box" and np.all(np.abs(point) <= [0.075, 0.05, 0.10]):
+        clearance = float(np.min(np.array([0.075, 0.05, 0.10]) - np.abs(point)))
+    elif object_id == "debug_ring":
+        planar = point[[0, 2]]
+        outside_inner, inner_distance = _polygon_distance(planar, 0.055)
+        inside_outer, outer_distance = _polygon_distance(planar, 0.10)
+        if inside_outer and not outside_inner and abs(point[1]) <= 0.0175:
+            clearance = min(inner_distance, outer_distance, 0.0175 - abs(point[1]))
+    if clearance > radius + tolerance:
+        return "fully_contained"
+    return "boundary_overlap"
