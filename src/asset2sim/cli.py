@@ -43,6 +43,34 @@ def main() -> int:
     physics_index.add_argument("--assets", type=Path, required=True)
     physics_index.add_argument("--condition", choices=("C0", "C1", "C2", "C3"), action="append")
     physics_index.add_argument("--output", type=Path, required=True)
+    physics_batch = commands.add_parser(
+        "physics-batch", help="Prepare and probe a small asset batch"
+    )
+    physics_batch.add_argument("--manifest", type=Path, required=True)
+    source = physics_batch.add_mutually_exclusive_group(required=True)
+    source.add_argument("--run", type=Path)
+    source.add_argument("--reference", action="store_true")
+    physics_batch.add_argument("--sample-id", action="append")
+    physics_batch.add_argument(
+        "--condition", choices=("C0", "C1", "C2", "C3"), action="append", required=True
+    )
+    physics_batch.add_argument("--output", type=Path, required=True)
+    physics_batch.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/debug.yaml"
+    )
+    physics_batch.add_argument("--merge-coincident", action="store_true")
+    physics_batch.add_argument("--remove-degenerate", action="store_true")
+    physics_batch.add_argument("--remove-unreferenced", action="store_true")
+    oracle = commands.add_parser(
+        "physics-oracle", help="Run isolated offline reference-fit diagnostic"
+    )
+    oracle.add_argument("--batch", type=Path, required=True)
+    oracle.add_argument("--manifest", type=Path, required=True)
+    oracle.add_argument("--sample-id", required=True)
+    oracle.add_argument(
+        "--condition", choices=("C0", "C1", "C2", "C3"), action="append", required=True
+    )
+    oracle.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -81,6 +109,31 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "physics-oracle":
+            from asset2sim.simulation.oracle import run_oracle_diagnostic
+
+            result = run_oracle_diagnostic(
+                args.batch, args.manifest, args.sample_id, args.condition, args.output
+            )
+            print(f"Offline oracle diagnostic {result['status']}: {args.output}")
+            return 0 if result["status"] == "completed" else 1
+        if args.command == "physics-batch":
+            from asset2sim.simulation.batch import run_physics_batch
+
+            result = run_physics_batch(
+                args.manifest,
+                args.output,
+                args.condition,
+                args.sample_id,
+                run=args.run,
+                reference=args.reference,
+                merge_coincident=args.merge_coincident,
+                remove_degenerate=args.remove_degenerate,
+                remove_unreferenced=args.remove_unreferenced,
+                config_path=args.config,
+            )
+            print(f"Physics batch {result['status']}: {args.output}")
+            return 0 if result["status"] == "completed" else 1
         if args.command == "physics-index":
             import json
 

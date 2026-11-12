@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from asset2sim.artifacts import read_jsonl
-from asset2sim.data.manifest import load_manifest
+from asset2sim.data.manifest import load_manifest, select_samples
 
 
 def index_generated_assets(
@@ -14,6 +14,7 @@ def index_generated_assets(
     run: Path,
     assets_root: Path,
     conditions: tuple[str, ...] = ("C0", "C1", "C2", "C3"),
+    sample_ids: list[str] | None = None,
 ) -> list[dict]:
     """Link sample IDs to verified Task A/B assets; never use reference geometry.
 
@@ -30,7 +31,7 @@ def index_generated_assets(
             raise ValueError(f"Missing or duplicate generation sample_id: {sample_id!r}")
         by_id[sample_id] = row
     output = []
-    for item in load_manifest(manifest):
+    for item in select_samples(load_manifest(manifest), sample_ids):
         sid = item["sample_id"]
         record = {
             "sample_id": sid,

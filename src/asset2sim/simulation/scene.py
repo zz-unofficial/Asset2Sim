@@ -28,6 +28,7 @@ def make_scene(
     body_mode: str = "static",
     xml_path: Path | None = None,
     z_offset: float = 0.0,
+    object_transform: np.ndarray | None = None,
 ):
     """Compile a scene and verify all mesh vertices in the physical coordinate frame."""
     record = json.loads((collider_dir / "colliders.json").read_text())
@@ -66,8 +67,21 @@ def make_scene(
     else:
         for name, source in sources:
             ET.SubElement(assets, "mesh", name=name, file=str(source))
+    transform = np.eye(4) if object_transform is None else np.asarray(object_transform, dtype=float)
+    if (
+        transform.shape != (4, 4)
+        or not np.isfinite(transform).all()
+        or not np.allclose(transform[3], [0, 0, 0, 1])
+        or not np.allclose(transform[:3, :3].T @ transform[:3, :3], np.eye(3), atol=1e-6)
+        or not np.isclose(np.linalg.det(transform[:3, :3]), 1, atol=1e-6)
+    ):
+        raise ValueError("object_transform must be a proper rigid transform")
+    quat = np.empty(4)
+    mujoco.mju_mat2Quat(quat, np.ascontiguousarray(transform[:3, :3]).reshape(9))
     world = ET.SubElement(root, "worldbody")
-    body = ET.SubElement(world, "body", name="object", pos="0 0 0")
+    body = ET.SubElement(
+        world, "body", name="object", pos=_numbers(transform[:3, 3]), quat=_numbers(quat)
+    )
     if body_mode == "dynamic":
         ET.SubElement(body, "freejoint", name="object_free")
     ET.SubElement(
@@ -179,11 +193,15 @@ def make_scene(
         expected = np.asarray(
             trimesh.load(collider_dir / component["path"], force="mesh", process=False).vertices
         )
+        expected = expected @ transform[:3, :3].T + transform[:3, 3]
         error = max(
             cKDTree(actual).query(expected)[0].max(), cKDTree(expected).query(actual)[0].max()
         )
         bounds_error = np.max(
-            np.abs(np.array([actual.min(axis=0), actual.max(axis=0)]) - component["aabb_m"])
+            np.abs(
+                np.array([actual.min(axis=0), actual.max(axis=0)])
+                - np.array([expected.min(axis=0), expected.max(axis=0)])
+            )
         )
         if error > 2e-6 or bounds_error > 2e-6:
             raise ValueError(f"Component {i} coordinate mismatch: {error:g} m")
@@ -202,6 +220,7 @@ def make_scene(
             "expected_components": len(components),
             "actual_collision_geoms": len(validation),
             "body_mode": body_mode,
+            "object_transform": transform.tolist(),
             "body_mass_kg": float(model.body_mass[object_id]),
             "body_inertia_kg_m2": model.body_inertia[object_id].tolist(),
             "components": validation,

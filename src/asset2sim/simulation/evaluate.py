@@ -62,6 +62,7 @@ def evaluate_trajectory(
     name: str,
     x_offset: float,
     z_offset: float = 0.0,
+    reference_enabled: bool = True,
 ) -> tuple[list[dict], list[dict]]:
     start, end = config["trajectory_start_y_m"], config["trajectory_end_y_m"]
     radius, repeats = config["probe_radius_m"], config["timing_repeats"]
@@ -71,9 +72,9 @@ def evaluate_trajectory(
     samples = []
     for index, y in enumerate(np.linspace(start, end, config["trajectory_samples"])):
         point = np.array([x_offset, y, z_offset])
-        signed = distance_to_solid(object_id, point) - radius
-        valid = abs(signed) > config["reference_tolerance_m"]
-        reference = signed < 0
+        signed = distance_to_solid(object_id, point) - radius if reference_enabled else None
+        valid = abs(signed) > config["reference_tolerance_m"] if signed is not None else False
+        reference = signed < 0 if signed is not None else None
         timings = []
         for _ in range(repeats):
             data.qpos[qadr] = y - start
@@ -91,18 +92,26 @@ def evaluate_trajectory(
                 "y_m": float(y),
                 "z_m": z_offset,
                 "probe_radius_m": radius,
-                "reference_distance_to_solid_m": float(signed + radius),
+                "reference_distance_to_solid_m": float(signed + radius)
+                if signed is not None
+                else None,
                 "reference_contact": reference,
                 "reference_valid": valid,
                 "reference_category": reference_category(
                     object_id, point, radius, config["reference_tolerance_m"]
-                ),
+                )
+                if reference_enabled
+                else "reference_unavailable",
                 **_probe_results(model, data),
                 "forward_mean_s": float(np.mean(timings)),
                 "forward_repeats": repeats,
             }
         )
-    reference_blocked = any(row["reference_contact"] for row in samples if row["reference_valid"])
+    reference_blocked = (
+        any(row["reference_contact"] for row in samples if row["reference_valid"])
+        if reference_enabled
+        else None
+    )
     trials = []
     for repeat in range(repeats):
         data = mujoco.MjData(model)
@@ -111,8 +120,11 @@ def evaluate_trajectory(
             data.ctrl[0] = (end - start) * min((step + 1) / config["drive_steps"], 1.0)
             mujoco.mj_step(model, data)
         elapsed = (time.perf_counter_ns() - begin) / 1e9
+        warnings = {
+            mujoco.mjtWarning(i).name: int(w.number) for i, w in enumerate(data.warning) if w.number
+        }
         final_position = float(start + data.qpos[qadr])
-        valid = bool(np.isfinite(final_position) and np.isfinite(data.qvel).all())
+        valid = bool(np.isfinite(final_position) and np.isfinite(data.qvel).all() and not warnings)
         passed = bool(final_position >= end - config["pass_tolerance_m"]) if valid else None
         final_contact = None
         if valid:
@@ -133,11 +145,14 @@ def evaluate_trajectory(
                 "final_y_m": final_position if valid else None,
                 "passed": passed,
                 "final_solver_active": final_contact,
-                "behavior_consistent": (passed != reference_blocked) if valid else None,
+                "behavior_consistent": (passed != reference_blocked)
+                if valid and reference_enabled
+                else None,
                 "valid": valid,
+                "solver_warnings": warnings,
                 "invalid_reason": "stalled_without_active_contact"
                 if not valid and final_contact is False
-                else "nonfinite_state"
+                else "solver_warning_or_nonfinite_state"
                 if not valid
                 else "",
                 "simulation_seconds": elapsed,
