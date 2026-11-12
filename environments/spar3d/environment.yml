@@ -1,0 +1,12 @@
+name: asset2sim-spar3d
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.10
+  - pip
+  - ninja
+  - cmake=3.31
+  - cuda-nvcc=12.8
+  - cuda-cudart-dev=12.8
+  - cuda-cudart-static=12.8

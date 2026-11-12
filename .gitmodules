@@ -1,3 +1,6 @@
 [submodule "third_party/stable-fast-3d"]
 	path = third_party/stable-fast-3d
 	url = https://github.com/Stability-AI/stable-fast-3d.git
+[submodule "third_party/stable-point-aware-3d"]
+	path = third_party/stable-point-aware-3d
+	url = https://github.com/Stability-AI/stable-point-aware-3d.git

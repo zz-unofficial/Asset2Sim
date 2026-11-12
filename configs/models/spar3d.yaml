@@ -1,0 +1,11 @@
+model: stabilityai/stable-point-aware-3d
+revision: main
+device: cuda
+precision: bfloat16
+texture_resolution: 1024
+foreground_ratio: 1.3
+remesh: none
+target_vertex_count: -1
+low_vram: true
+seed: 0
+cpu_threads: 8

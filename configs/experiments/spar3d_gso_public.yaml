@@ -1,0 +1,5 @@
+name: spar3d_gso_public24
+model: spar3d
+model_config: ../models/spar3d.yaml
+manifest: ../../data/manifests/sf3d_gso_public.jsonl
+overrides: {}

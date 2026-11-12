@@ -183,3 +183,52 @@ def test_reports_reject_different_image_settings_before_writing(tmp_path):
     with pytest.raises(ValueError, match="Image settings differ"):
         write_report(paths, tmp_path / "report")
     assert not (tmp_path / "report").exists()
+
+
+def test_model_comparison_identifies_models_and_requires_paired_objects(tmp_path):
+    import json
+
+    from asset2sim.evaluation.report import write_report
+
+    directories = []
+    for model in ("sf3d", "spar3d"):
+        directory = tmp_path / model
+        directory.mkdir()
+        (directory / "evaluation.json").write_text(
+            json.dumps(
+                {
+                    "model": model,
+                    "device": "cpu",
+                    "profile": {"name": "same", "seed": 0},
+                    "image_metrics_definition": "same",
+                    "datasets": {"gso": {"planned": 1, "successful": 0}},
+                }
+            )
+        )
+        (directory / "metrics.jsonl").write_text(
+            json.dumps(
+                {
+                    "dataset": "gso",
+                    "sample_id": "same",
+                    "status": "failed",
+                }
+            )
+            + "\n"
+        )
+        directories.append(directory)
+    write_report(directories, tmp_path / "report")
+    report = (tmp_path / "report/comparison.md").read_text()
+    assert "| sf3d | gso |" in report and "| spar3d | gso |" in report
+    assert (tmp_path / "report/paired.csv").is_file()
+    (directories[1] / "metrics.jsonl").write_text(
+        json.dumps(
+            {
+                "dataset": "gso",
+                "sample_id": "different",
+                "status": "failed",
+            }
+        )
+        + "\n"
+    )
+    with pytest.raises(ValueError, match="Sample IDs differ"):
+        write_report(directories, tmp_path / "invalid")

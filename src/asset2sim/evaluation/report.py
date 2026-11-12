@@ -9,7 +9,9 @@ from pathlib import Path
 from asset2sim.artifacts import read_jsonl, write_json
 
 
-def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | None:
+def qualitative_sheet(
+    directory: Path, dataset: str, output: Path, label: str | None = None
+) -> Path | None:
     """Show four fixed CD ranks, each with its conditioning and opposite view."""
     from PIL import Image, ImageDraw, ImageFont
 
@@ -80,10 +82,11 @@ def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | Non
         selection.append(
             {"sample_id": row["sample_id"], "cd_rank": rank + 1, "views": [first, opposite]}
         )
-    target = output / f"{dataset}_qualitative.png"
+    name = label or dataset
+    target = output / f"{name}_qualitative.png"
     canvas.save(target)
     write_json(
-        output / f"{dataset}_qualitative.json",
+        output / f"{name}_qualitative.json",
         {"selection_rule": "ranks 1, one-third, two-thirds, last by CD", "objects": selection},
     )
     return target
@@ -99,9 +102,47 @@ def write_report(evaluations: list[Path], output: Path) -> None:
     }
     if len(definitions) > 1:
         raise ValueError("Image settings differ; summarize them separately")
+    profiles = []
+    for path in evaluations:
+        profile = json.loads((path / "evaluation.json").read_text())["profile"].copy()
+        profile.pop("name", None)
+        profiles.append(profile)
+    if any(profile != profiles[0] for profile in profiles[1:]):
+        raise ValueError("Evaluation parameters differ; summarize them separately")
+    paired = {}
+    inputs_by_dataset = {}
+    for directory in evaluations:
+        measured = read_jsonl(directory / "metrics.jsonl")
+        for row in measured:
+            paired.setdefault(row["dataset"], {}).setdefault(str(directory), set()).add(
+                row["sample_id"]
+            )
+        metadata = json.loads((directory / "evaluation.json").read_text())
+        if metadata.get("run"):
+            inputs = {
+                row["sample_id"]: row for row in read_jsonl(Path(metadata["run"]) / "inputs.jsonl")
+            }
+            for row in measured:
+                sample = inputs[row["sample_id"]]
+                signature = tuple(
+                    sample.get(key) for key in ("image", "reference_mesh", "render_metadata")
+                )
+                previous = inputs_by_dataset.setdefault(row["dataset"], {}).setdefault(
+                    row["sample_id"], signature
+                )
+                if previous != signature:
+                    raise ValueError(
+                        f"Input paths differ for {row['sample_id']}; use the same data"
+                    )
+    for dataset, selections in paired.items():
+        if len({frozenset(ids) for ids in selections.values()}) > 1:
+            raise ValueError(f"Sample IDs differ for {dataset}; use the same input set")
     rows = []
+    paired_rows = []
     for directory in evaluations:
         metadata = json.loads((directory / "evaluation.json").read_text())
+        for record in read_jsonl(directory / "metrics.jsonl"):
+            paired_rows.append({"model": metadata["model"], "evaluation": str(directory), **record})
         for dataset, metrics in metadata["datasets"].items():
             rows.append(
                 {
@@ -120,6 +161,11 @@ def write_report(evaluations: list[Path], output: Path) -> None:
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
+    paired_columns = list(dict.fromkeys(key for row in paired_rows for key in row))
+    with (output / "paired.csv").open("x", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=paired_columns)
+        writer.writeheader()
+        writer.writerows(paired_rows)
     lines = [
         "# 公开子集统一评测",
         "",
@@ -176,23 +222,26 @@ def write_report(evaluations: list[Path], output: Path) -> None:
         lines += [
             f"## {title}",
             "",
-            "| 数据 | 有效/计划 | " + " | ".join(label for label, _ in fields) + " |",
-            "| --- | --- | " + " | ".join("---" for _ in fields) + " |",
+            "| 模型 | 数据 | 有效/计划 | " + " | ".join(label for label, _ in fields) + " |",
+            "| --- | --- | --- | " + " | ".join("---" for _ in fields) + " |",
         ]
         for row in rows:
             values = [f"{row[key]:.5f}" if row.get(key) is not None else "—" for _, key in fields]
             lines.append(
-                f"| {row['dataset']} | {row['successful']}/{row['planned']} | "
+                f"| {row['model']} | {row['dataset']} | {row['successful']}/{row['planned']} | "
                 + " | ".join(values)
                 + " |"
             )
         lines.append("")
-    for directory in evaluations:
+    for index, directory in enumerate(evaluations):
         metadata = json.loads((directory / "evaluation.json").read_text())
         for dataset in metadata["datasets"]:
-            figure = qualitative_sheet(directory, dataset, output)
+            label = (
+                f"{metadata['model']}_{dataset}_{index + 1}" if len(evaluations) > 1 else dataset
+            )
+            figure = qualitative_sheet(directory, dataset, output, label)
             if figure:
-                lines += [f"[{dataset} 固定排名案例图]({figure.name})", ""]
+                lines += [f"[{metadata['model']} / {dataset} 固定排名案例图]({figure.name})", ""]
     lines += ["论文表 1 的宽阈值保留在 CSV；不同图像设置的实验分别汇总。", ""]
     (output / "comparison.md").write_text("\n".join(lines))
     print(f"Standard comparison: {output / 'comparison.md'}")

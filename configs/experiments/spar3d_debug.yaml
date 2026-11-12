@@ -1,0 +1,5 @@
+name: spar3d_debug
+model: spar3d
+model_config: ../models/spar3d.yaml
+manifest: ../../data/manifests/debug.jsonl
+overrides: {}

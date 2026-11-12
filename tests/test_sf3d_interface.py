@@ -59,3 +59,26 @@ def test_official_export_axes_are_mapped_back_to_model_frame():
 
     np.testing.assert_allclose(SF3D_RAW_TO_MODEL_Z_UP @ [0, 1, 0, 0], [0, 0, 1, 0])
     np.testing.assert_allclose(SF3D_RAW_TO_MODEL_Z_UP @ [0, 0, -1, 0], [1, 0, 0, 0])
+
+
+def test_spar3d_generator_exports_mesh_and_sampled_points(tmp_path, monkeypatch):
+    import trimesh
+    from PIL import Image
+
+    from asset2sim.generation.spar3d import SPAR3DConfig, SPAR3DGenerator
+
+    class Model:
+        def run_image(self, image, **kwargs):
+            assert kwargs["return_points"] is True
+            return trimesh.creation.box(), {
+                "point_clouds": [trimesh.points.PointCloud([[0, 0, 0]])]
+            }
+
+    generator = SPAR3DGenerator(SPAR3DConfig(device="cpu"))
+    generator.model = Model()
+    monkeypatch.setattr(generator, "prepare_image", lambda path: Image.new("RGBA", (32, 32), "red"))
+    result = generator.generate(tmp_path / "input.png", tmp_path / "sample")
+    assert result["faces"] == 12
+    assert result["points"] == 1
+    assert (tmp_path / result["point_cloud"]).is_file()
+    assert (tmp_path / "sample/mesh.glb").is_file()
