@@ -71,8 +71,8 @@ def qualitative_sheet(
                     background.convert("RGB").resize((width, width)),
                     (column * width, 30 + index * height),
                 )
-        label = f"rank {rank + 1}/{len(rows)}  {row['sample_id']}"
-        draw.text((6, 30 + index * height + width + 3), label, font=font, fill="black")
+        row_label = f"rank {rank + 1}/{len(rows)}  {row['sample_id']}"
+        draw.text((6, 30 + index * height + width + 3), row_label, font=font, fill="black")
         draw.text(
             (6, 30 + index * height + width + 23),
             f"CD={row['chamfer_l1']:.4f}  FS@0.1={row['fscore@0.1']:.4f}",

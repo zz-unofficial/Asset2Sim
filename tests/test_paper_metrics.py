@@ -232,3 +232,45 @@ def test_model_comparison_identifies_models_and_requires_paired_objects(tmp_path
     )
     with pytest.raises(ValueError, match="Sample IDs differ"):
         write_report(directories, tmp_path / "invalid")
+
+
+def test_qualitative_sheet_uses_safe_name_for_successful_objects(tmp_path):
+    import json
+
+    from asset2sim.evaluation.report import qualitative_sheet
+
+    run = tmp_path / "run"
+    evaluation = tmp_path / "evaluation"
+    renders = evaluation / "renders/sample"
+    reference = renders / "reference/texture"
+    output = tmp_path / "report"
+    for path in (run, reference, output):
+        path.mkdir(parents=True)
+    for index in range(2):
+        image = Image.new("RGBA", (8, 8), "red")
+        image.save(renders / f"{index:03d}.png")
+        image.save(reference / f"{index:03d}.png")
+    metadata = tmp_path / "render.json"
+    metadata.write_text(
+        json.dumps({"conditioning_view": 0, "views": [{"image": "0.png"}, {"image": "1.png"}]})
+    )
+    (run / "inputs.jsonl").write_text(
+        json.dumps({"sample_id": "sample", "render_metadata": str(metadata)}) + "\n"
+    )
+    (evaluation / "evaluation.json").write_text(json.dumps({"run": str(run), "model": "spar3d"}))
+    (evaluation / "metrics.jsonl").write_text(
+        json.dumps(
+            {
+                "sample_id": "sample",
+                "dataset": "gso",
+                "status": "ok",
+                "evaluated_views": 2,
+                "chamfer_l1": 0.1,
+                "fscore@0.1": 0.5,
+            }
+        )
+        + "\n"
+    )
+    result = qualitative_sheet(evaluation, "gso", output, "spar3d_gso_2")
+    assert result == output / "spar3d_gso_2_qualitative.png"
+    assert result.is_file()

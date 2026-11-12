@@ -1,0 +1,37 @@
+{
+  "selection_rule": "ranks 1, one-third, two-thirds, last by CD",
+  "objects": [
+    {
+      "sample_id": "gso_Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets",
+      "cd_rank": 1,
+      "views": [
+        4,
+        12
+      ]
+    },
+    {
+      "sample_id": "gso_Reebok_DMX_MAX_MANIA_WD_D",
+      "cd_rank": 8,
+      "views": [
+        0,
+        8
+      ]
+    },
+    {
+      "sample_id": "gso_Frozen_Scrabble_Jr",
+      "cd_rank": 16,
+      "views": [
+        4,
+        12
+      ]
+    },
+    {
+      "sample_id": "gso_Smith_Hawken_Woven_BasketTray_Organizer_with_3_Compartments_95_x_9_x_13",
+      "cd_rank": 24,
+      "views": [
+        4,
+        12
+      ]
+    }
+  ]
+}
