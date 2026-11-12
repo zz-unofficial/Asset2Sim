@@ -23,6 +23,15 @@ def main() -> int:
     physics.add_argument("--remove-unreferenced", action="store_true")
     physics.add_argument("--merge-coincident", action="store_true")
     physics.add_argument("--min-triangle-area", type=float, default=0.0)
+    collision = commands.add_parser("build-collision", help="Build convex collision components")
+    collision.add_argument("--mesh", type=Path, required=True)
+    collision.add_argument("--condition", choices=("C0", "C1", "C2", "C3"), required=True)
+    collision.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/collision/default.yaml"
+    )
+    collision.add_argument("--output", type=Path, required=True)
+    collision.add_argument("--allow-open", action="store_true")
+    collision.add_argument("--assume-prepared", action="store_true")
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -61,6 +70,19 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "build-collision":
+            from asset2sim.collision import build_collision
+
+            result = build_collision(
+                args.mesh,
+                args.output,
+                args.condition,
+                args.config,
+                allow_open=args.allow_open,
+                assume_prepared=args.assume_prepared,
+            )
+            print(f"Built {result['component_count']} collision components: {args.output}")
+            return 0
         if args.command == "prepare-mesh":
             from asset2sim.geometry.prepare import PreparationOptions, prepare_mesh
 

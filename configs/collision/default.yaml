@@ -1,0 +1,20 @@
+coacd:
+  max_convex_hull: -1
+  preprocess_mode: auto
+  preprocess_resolution: 50
+  resolution: 2000
+  mcts_nodes: 20
+  mcts_iterations: 150
+  mcts_max_depth: 3
+  pca: false
+  merge: true
+  decimate: false
+  max_ch_vertex: 256
+  extrude: false
+  extrude_margin: 0.01
+  apx_mode: ch
+  seed: 0
+  real_metric: false
+surface_samples: 10000
+surface_seed: 0
+timeout_seconds: 1800
