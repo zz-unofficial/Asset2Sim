@@ -1,0 +1,5 @@
+name: sf3d_gso_public24
+model: sf3d
+model_config: ../models/sf3d.yaml
+manifest: ../../data/manifests/sf3d_gso_public.jsonl
+overrides: {}

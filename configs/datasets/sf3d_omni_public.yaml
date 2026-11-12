@@ -1,0 +1,17 @@
+name: sf3d_omni_public24
+source: omniobject3d
+archives:
+  - name: bed
+  - name: bumbag
+  - name: battery
+  - name: book
+sample_count: 24
+seed: 0
+selection_file: ../../experiments/datasets/sf3d_omni_public.json
+image_size: 512
+render_views: 16
+elevation_degrees: 15
+conditioning_view: largest_silhouette
+camera_distance: 1.6
+yfov_degrees: 40
+normalization_extent: 1.0

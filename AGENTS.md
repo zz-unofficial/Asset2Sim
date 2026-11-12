@@ -15,16 +15,20 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 | `third_party/<upstream>/` | 官方 Git 子模块，记录固定版本；适配写在项目源码中 |
 | `configs/models/<model>.yaml` | 模型默认参数：权重标识、精度、生成与导出选项 |
 | `configs/experiments/<experiment>.yaml` | 模型选择、共享数据清单、样例选择和本次参数覆盖 |
+| `configs/datasets/`、`configs/evaluation/` | 对象选择与渲染配置；归一化、对齐、采样与指标参数 |
+| `experiments/datasets/`、`experiments/references/` | 固定对象列表与来源；论文原始指标和表号 |
 | `data/manifests/<dataset>.jsonl` | 模型间共用的输入清单；按对象与视角管理 |
 | `data/samples/` | 小型参考网格、渲染图和来源说明；大数据放入被忽略的 `data/raw/` |
 | `src/asset2sim/generation/` | 模型适配器、接口协议和注册表 |
 | `src/asset2sim/data/` | 清单解析、程序化参考几何和数据准备 |
 | `src/asset2sim/experiments/` | 配置解析、公共运行器、结果表导出 |
+| `src/asset2sim/evaluation/` | 公共几何对齐、表面距离、图像指标与论文对照表 |
+| `results/raw/<experiment>/<run_id>/` | 逐对象/视角指标、对齐矩阵与评测渲染 |
 | `data/generated/<model>/<condition>/<run_id>/` | 每次生成的独立输出与运行记录 |
 | `results/metrics/`、`results/figures/` | 从运行记录导出的 CSV 与比较图 |
 | `docs/protocols/`、`tests/` | 关键操作与分析；公共接口、几何和评测逻辑测试 |
 
-后续几何、碰撞、仿真和指标实现分别放入 `geometry/`、`collision/`、`simulation/`、`evaluation/`，随功能创建。共享包保持轻量，各模型的数值库和 GPU 依赖由自己的 Conda 环境管理。
+后续几何、碰撞、仿真实现分别放入 `geometry/`、`collision/`、`simulation/`，随功能创建。共享包保持轻量，各模型的数值库和 GPU 依赖由自己的 Conda 环境管理。
 
 ## 接入一个模型
 
@@ -56,6 +60,8 @@ overrides:
 
 数据清单每行包含 `sample_id`、`object_id`、`view_id`、`image`、`split`；有参考几何时填写 `reference_mesh`，同时记录类别、来源、许可和相机。文件路径相对清单所在目录。对象 ID 与视角 ID 跨模型保持一致，后续表格按这些字段配对。
 
+论文评测数据额外填写 `dataset` 与 `render_metadata`，后者指向保存相机矩阵、参考尺度变换、输入视角及 16 张参考图路径的 JSON。公开对象列表固定后共用，准备阶段处理纹理和视角，生成阶段仅接收输入图。
+
 共享开发输入使用 `data/manifests/debug.jsonl`（4 对象、8 张图）；SF3D 官方样例使用 `sf3d_examples.jsonl`（4 张图）。正式实验另建清单，按对象划分开发与评测集合。
 
 ## 运行与比较
@@ -72,6 +78,12 @@ asset2sim summarize data/generated/sf3d/debug/run01 \
 `summarize` 可接收多个运行目录，导出统一的逐输入 CSV，包含实验、模型、对象/视角、状态、资源测量与资产路径。比较时使用同一清单、物性和任务配置；几何与成功率先按对象汇总，运行时间在统一硬件和计时口径下比较。
 
 每轮运行保存 `run.json`（解析后参数与环境）、`inputs.jsonl`（实际输入快照）、`results.jsonl`（每个输入的测量与状态）及样例目录。新输出目录和 CSV 文件使用独立名称，已有结果保留原位。失败保留记录并计入对应分母。旧版 SF3D 命令与已有运行记录继续可读，`configs/sf3d.yaml` 指向新的模型配置。
+
+## 论文指标复现
+
+按 [SF3D 论文复现协议](docs/protocols/sf3d_paper_reproduction.md) 准备公开数据、运行生成，再执行 `asset2sim evaluate --run <生成目录> --config configs/evaluation/sf3d_paper_public.yaml --output <新评测目录>`。`asset2sim paper-report <评测目录> --output <新报告目录>` 导出实测与论文值的对照表。
+
+几何使用归一化、旋转搜索及刚体 ICP 后的 CD 和 F-score；图像指标经尺度细化后计算 PSNR、SSIM、LPIPS。各模型复用同一数据、评测配置与渲染器。修改阈值、尺度或采样数量时另建评测配置和结果目录。论文报告值保存在 `experiments/references/`，本机实测从逐对象记录汇总；分析同时给出有效/计划对象数、数据选择规则和设备。
 
 ## 代码、验证与交付
 

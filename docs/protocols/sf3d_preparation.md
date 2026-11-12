@@ -63,7 +63,7 @@ asset2sim summarize data/generated/sf3d/debug/run01 \
 
 RGB 背景处理使用 CPU ONNX Runtime，RGBA 输入沿用已有掩码。本次环孔 RGB 样例中，自动抠图保留了孔内白色背景，因此模型间定量比较使用统一 RGBA 输入，另行分析真实照片的背景处理影响。
 
-下一阶段按 [实验框架](reproduction_experiment_framework.md) 接入其余模型，并计算几何、碰撞和交互指标。新适配器的目录与接口约定见 [AGENTS.md](../../AGENTS.md)。
+论文表 1 与附录表 A1 的真实数据、指标参数和运行入口见 [SF3D 论文实验复现](sf3d_paper_reproduction.md)。按 [实验框架](reproduction_experiment_framework.md) 接入其余模型，并计算几何、碰撞和交互指标。新适配器的目录与接口约定见 [AGENTS.md](../../AGENTS.md)。
 
 ## 官方来源
 

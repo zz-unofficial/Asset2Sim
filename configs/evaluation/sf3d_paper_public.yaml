@@ -1,0 +1,16 @@
+name: sf3d_paper_public_v1
+paper: https://arxiv.org/abs/2408.00653
+# Paper Table 1 thresholds; numerical implementation choices are recorded below.
+fscore_thresholds: [0.1, 0.2, 0.5]
+normalization_extent: 1.0
+surface_points: 20000
+alignment_points: 1024
+rotation_step_degrees: 30
+icp_iterations: 50
+icp_tolerance: 0.000001
+image_icp_iterations: 20
+seed: 0
+image_metrics: true
+lpips_network: alex
+cpu_threads: 8
+

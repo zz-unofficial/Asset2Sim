@@ -1,0 +1,37 @@
+{
+  "selection_rule": "ranks 1, one-third, two-thirds, last by CD",
+  "objects": [
+    {
+      "sample_id": "gso_Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets",
+      "cd_rank": 1,
+      "views": [
+        4,
+        12
+      ]
+    },
+    {
+      "sample_id": "gso_FRUIT_VEGGIE_MEMO_GRADIENT",
+      "cd_rank": 8,
+      "views": [
+        15,
+        7
+      ]
+    },
+    {
+      "sample_id": "gso_Dell_Series_9_Color_Ink_Cartridge_MK993_High_Yield",
+      "cd_rank": 16,
+      "views": [
+        4,
+        12
+      ]
+    },
+    {
+      "sample_id": "gso_Frozen_Scrabble_Jr",
+      "cd_rank": 24,
+      "views": [
+        4,
+        12
+      ]
+    }
+  ]
+}

@@ -28,7 +28,7 @@ def load_manifest(path: Path) -> list[dict[str, Any]]:
         seen.add(sample_id)
         if not record.get("image"):
             raise ValueError(f"Missing image for {sample_id}")
-        for key in ("image", "reference_mesh"):
+        for key in ("image", "reference_mesh", "render_metadata"):
             if record.get(key):
                 resolved = (path.parent / record[key]).resolve()
                 if key == "image" and not resolved.is_file():
@@ -59,7 +59,7 @@ def export_manifest(records: list[dict[str, Any]], output: Path) -> None:
     with output.open("x", encoding="utf-8") as stream:
         for original in records:
             record = dict(original)
-            for key in ("image", "reference_mesh"):
+            for key in ("image", "reference_mesh", "render_metadata"):
                 if record.get(key):
                     record[key] = Path(os.path.relpath(record[key], output.parent)).as_posix()
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")

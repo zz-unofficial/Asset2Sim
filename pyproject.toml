@@ -12,6 +12,7 @@ dependencies = ["PyYAML>=6,<7"]
 [project.optional-dependencies]
 data = ["Pillow>=10", "numpy>=1.26,<3", "trimesh>=4.4,<5", "pyrender==0.1.45", "shapely>=2,<3", "mapbox-earcut>=1,<2"]
 dev = ["pytest>=8,<9", "ruff>=0.8,<1"]
+evaluation = ["scipy>=1.12,<2", "scikit-image>=0.22,<1", "lpips==0.1.4"]
 
 [project.scripts]
 asset2sim = "asset2sim.cli:main"

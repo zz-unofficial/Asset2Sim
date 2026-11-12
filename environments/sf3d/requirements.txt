@@ -22,4 +22,7 @@ shapely>=2,<3
 mapbox-earcut>=1,<2
 pytest>=8,<9
 ruff>=0.8,<1
+scipy==1.15.3
+scikit-image==0.25.2
+lpips==0.1.4
 

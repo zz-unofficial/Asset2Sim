@@ -1,0 +1,200 @@
+{
+  "dataset": "sf3d_omni_public24",
+  "seed": 0,
+  "selected_at": "2026-11-12T00:30:02.152207+00:00",
+  "population_size": 38,
+  "objects": [
+    {
+      "object_id": "omni_book_book_011",
+      "name": "book_011",
+      "mesh": "data/raw/omniobject3d/book/book_011/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_013",
+      "name": "book_013",
+      "mesh": "data/raw/omniobject3d/book/book_013/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_001",
+      "name": "bumbag_001",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_001/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_003",
+      "name": "book_003",
+      "mesh": "data/raw/omniobject3d/book/book_003/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_021",
+      "name": "book_021",
+      "mesh": "data/raw/omniobject3d/book/book_021/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_020",
+      "name": "book_020",
+      "mesh": "data/raw/omniobject3d/book/book_020/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_012",
+      "name": "book_012",
+      "mesh": "data/raw/omniobject3d/book/book_012/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_018",
+      "name": "book_018",
+      "mesh": "data/raw/omniobject3d/book/book_018/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_022",
+      "name": "book_022",
+      "mesh": "data/raw/omniobject3d/book/book_022/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_027",
+      "name": "book_027",
+      "mesh": "data/raw/omniobject3d/book/book_027/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_008",
+      "name": "bumbag_008",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_008/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_002",
+      "name": "book_002",
+      "mesh": "data/raw/omniobject3d/book/book_002/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_battery_battery_001",
+      "name": "battery_001",
+      "mesh": "data/raw/omniobject3d/battery/battery_001/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_005",
+      "name": "book_005",
+      "mesh": "data/raw/omniobject3d/book/book_005/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_005",
+      "name": "bumbag_005",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_005/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_025",
+      "name": "book_025",
+      "mesh": "data/raw/omniobject3d/book/book_025/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_003",
+      "name": "bumbag_003",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_003/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_014",
+      "name": "book_014",
+      "mesh": "data/raw/omniobject3d/book/book_014/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_008",
+      "name": "book_008",
+      "mesh": "data/raw/omniobject3d/book/book_008/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_002",
+      "name": "bumbag_002",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_002/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bumbag_bumbag_007",
+      "name": "bumbag_007",
+      "mesh": "data/raw/omniobject3d/bumbag/bumbag_007/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_006",
+      "name": "book_006",
+      "mesh": "data/raw/omniobject3d/book/book_006/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_book_book_007",
+      "name": "book_007",
+      "mesh": "data/raw/omniobject3d/book/book_007/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    },
+    {
+      "object_id": "omni_bed_bed_002",
+      "name": "bed_002",
+      "mesh": "data/raw/omniobject3d/bed/bed_002/Scan/Scan.obj",
+      "url": "https://drive.google.com/drive/folders/1ZpGmUlXYf0uc9xtN_w9iOhxmt9_gHZaP",
+      "license": "CC BY 4.0",
+      "source": "OmniObject3D author release"
+    }
+  ]
+}

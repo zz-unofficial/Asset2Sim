@@ -1,0 +1,14 @@
+{
+  "paper": "https://arxiv.org/abs/2408.00653",
+  "table_1": {
+    "gso": {"objects": 278, "chamfer_l1": 0.098, "fscore@0.1": 0.701, "fscore@0.2": 0.894, "fscore@0.5": 0.988},
+    "omniobject3d": {"objects": 308, "chamfer_l1": 0.090, "fscore@0.1": 0.726, "fscore@0.2": 0.920, "fscore@0.5": 0.990}
+  },
+  "table_a1": {
+    "gso": {"psnr": 21.247, "ssim": 0.865, "lpips": 0.124},
+    "omniobject3d": {"psnr": 20.134, "ssim": 0.851, "lpips": 0.132}
+  },
+  "runtime": {"image_to_mesh_seconds": 0.5, "gpu": "NVIDIA H100"},
+  "triangle_count": {"value": 27400, "scope": "one illustrative mesh, not a dataset mean"},
+  "declared_protocol": {"render_views": 16, "conditioning_view": "frontal", "geometry_alignment": "mesh normalization, brute-force rotations, rigid ICP"}
+}

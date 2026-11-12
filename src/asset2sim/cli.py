@@ -13,6 +13,17 @@ from asset2sim.paths import PROJECT_ROOT
 def main() -> int:
     parser = argparse.ArgumentParser(prog="asset2sim")
     commands = parser.add_subparsers(dest="command", required=True)
+    paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
+    paper_data.add_argument("--config", type=Path, required=True)
+    paper_data.add_argument("--output", type=Path, required=True)
+    paper_data.add_argument("--manifest", type=Path, required=True)
+    evaluate = commands.add_parser("evaluate", help="Measure paper geometry and image metrics")
+    evaluate.add_argument("--run", type=Path, required=True)
+    evaluate.add_argument("--config", type=Path, required=True)
+    evaluate.add_argument("--output", type=Path, required=True)
+    report = commands.add_parser("paper-report", help="Compare measured results with paper rows")
+    report.add_argument("evaluations", type=Path, nargs="+")
+    report.add_argument("--output", type=Path, required=True)
     run = commands.add_parser("run", help="Run a model with an experiment configuration")
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
@@ -40,6 +51,28 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "prepare-paper-data":
+            from asset2sim.data.paper import prepare_paper_data
+
+            count = prepare_paper_data(args.config, args.output, args.manifest)
+            print(f"Prepared {count} paper inputs: {args.manifest}")
+            return 0
+        if args.command == "evaluate":
+            from asset2sim.evaluation.paper import evaluate_run
+
+            result = evaluate_run(args.run, args.config, args.output)
+            return (
+                0
+                if all(
+                    group["planned"] == group["successful"] for group in result["datasets"].values()
+                )
+                else 1
+            )
+        if args.command == "paper-report":
+            from asset2sim.evaluation.report import write_report
+
+            write_report(args.evaluations, args.output)
+            return 0
         if args.command == "prepare-sf3d-data":
             from asset2sim.data.sf3d import prepare_data
 

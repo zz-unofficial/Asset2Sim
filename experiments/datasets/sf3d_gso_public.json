@@ -1,0 +1,200 @@
+{
+  "dataset": "sf3d_gso_public24",
+  "seed": 0,
+  "selected_at": "2026-11-11T23:51:42.852151+00:00",
+  "population_size": 1033,
+  "objects": [
+    {
+      "object_id": "gso_SNAIL_MEASURING_TAPE",
+      "name": "SNAIL_MEASURING_TAPE",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/SNAIL_MEASURING_TAPE/tip/SNAIL_MEASURING_TAPE.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_TEA_SET",
+      "name": "TEA_SET",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/TEA_SET/tip/TEA_SET.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Bifidus_Balance_FOS",
+      "name": "Bifidus_Balance_FOS",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Bifidus_Balance_FOS/tip/Bifidus_Balance_FOS.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Nintendo_Wii_Party_U_with_Controller_Wii_U_Game",
+      "name": "Nintendo_Wii_Party_U_with_Controller_Wii_U_Game",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Nintendo_Wii_Party_U_with_Controller_Wii_U_Game/tip/Nintendo_Wii_Party_U_with_Controller_Wii_U_Game.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Womens_Bluefish_2Eye_Boat_Shoe_in_Linen_Oat_IbrSyJdpT3h",
+      "name": "Womens_Bluefish_2Eye_Boat_Shoe_in_Linen_Oat_IbrSyJdpT3h",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Womens_Bluefish_2Eye_Boat_Shoe_in_Linen_Oat_IbrSyJdpT3h/tip/Womens_Bluefish_2Eye_Boat_Shoe_in_Linen_Oat_IbrSyJdpT3h.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Smith_Hawken_Woven_BasketTray_Organizer_with_3_Compartments_95_x_9_x_13",
+      "name": "Smith_Hawken_Woven_BasketTray_Organizer_with_3_Compartments_95_x_9_x_13",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Smith_Hawken_Woven_BasketTray_Organizer_with_3_Compartments_95_x_9_x_13/tip/Smith_Hawken_Woven_BasketTray_Organizer_with_3_Compartments_95_x_9_x_13.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Perricone_MD_Best_of_Perricone_7Piece_Collection_MEGsO6GIsyL",
+      "name": "Perricone_MD_Best_of_Perricone_7Piece_Collection_MEGsO6GIsyL",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Perricone_MD_Best_of_Perricone_7Piece_Collection_MEGsO6GIsyL/tip/Perricone_MD_Best_of_Perricone_7Piece_Collection_MEGsO6GIsyL.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets",
+      "name": "Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets/tip/Wilton_PreCut_Parchment_Sheets_10_x_15_24_sheets.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Reebok_JR_ZIG_COOPERSTOWN_MR",
+      "name": "Reebok_JR_ZIG_COOPERSTOWN_MR",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Reebok_JR_ZIG_COOPERSTOWN_MR/tip/Reebok_JR_ZIG_COOPERSTOWN_MR.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Marvel_Avengers_Titan_Hero_Series_Doctor_Doom",
+      "name": "Marvel_Avengers_Titan_Hero_Series_Doctor_Doom",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Marvel_Avengers_Titan_Hero_Series_Doctor_Doom/tip/Marvel_Avengers_Titan_Hero_Series_Doctor_Doom.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_FRUIT_VEGGIE_DOMINO_GRADIENT",
+      "name": "FRUIT_VEGGIE_DOMINO_GRADIENT",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/FRUIT_VEGGIE_DOMINO_GRADIENT/tip/FRUIT_VEGGIE_DOMINO_GRADIENT.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Olive_Kids_Birdie_Sidekick_Backpack",
+      "name": "Olive_Kids_Birdie_Sidekick_Backpack",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Olive_Kids_Birdie_Sidekick_Backpack/tip/Olive_Kids_Birdie_Sidekick_Backpack.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_FRUIT_VEGGIE_MEMO_GRADIENT",
+      "name": "FRUIT_VEGGIE_MEMO_GRADIENT",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/FRUIT_VEGGIE_MEMO_GRADIENT/tip/FRUIT_VEGGIE_MEMO_GRADIENT.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_DINNING_ROOM_FURNITURE_SET_1",
+      "name": "DINNING_ROOM_FURNITURE_SET_1",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/DINNING_ROOM_FURNITURE_SET_1/tip/DINNING_ROOM_FURNITURE_SET_1.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Nestle_Nips_Hard_Candy_Peanut_Butter",
+      "name": "Nestle_Nips_Hard_Candy_Peanut_Butter",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Nestle_Nips_Hard_Candy_Peanut_Butter/tip/Nestle_Nips_Hard_Candy_Peanut_Butter.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Frozen_Scrabble_Jr",
+      "name": "Frozen_Scrabble_Jr",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Frozen_Scrabble_Jr/tip/Frozen_Scrabble_Jr.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Perricone_MD_No_Bronzer_Bronzer",
+      "name": "Perricone_MD_No_Bronzer_Bronzer",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Perricone_MD_No_Bronzer_Bronzer/tip/Perricone_MD_No_Bronzer_Bronzer.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_D_ROSE_773_II_hvInJwJ5HUD",
+      "name": "D_ROSE_773_II_hvInJwJ5HUD",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/D_ROSE_773_II_hvInJwJ5HUD/tip/D_ROSE_773_II_hvInJwJ5HUD.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Cole_Hardware_Dishtowel_Stripe",
+      "name": "Cole_Hardware_Dishtowel_Stripe",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Cole_Hardware_Dishtowel_Stripe/tip/Cole_Hardware_Dishtowel_Stripe.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Poppin_File_Sorter_White",
+      "name": "Poppin_File_Sorter_White",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Poppin_File_Sorter_White/tip/Poppin_File_Sorter_White.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Weston_No_22_Cajun_Jerky_Tonic_12_fl_oz_nLj64ZnGwDh",
+      "name": "Weston_No_22_Cajun_Jerky_Tonic_12_fl_oz_nLj64ZnGwDh",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Weston_No_22_Cajun_Jerky_Tonic_12_fl_oz_nLj64ZnGwDh/tip/Weston_No_22_Cajun_Jerky_Tonic_12_fl_oz_nLj64ZnGwDh.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Dell_Series_9_Color_Ink_Cartridge_MK993_High_Yield",
+      "name": "Dell_Series_9_Color_Ink_Cartridge_MK993_High_Yield",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Dell_Series_9_Color_Ink_Cartridge_MK993_High_Yield/tip/Dell_Series_9_Color_Ink_Cartridge_MK993_High_Yield.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Reebok_DMX_MAX_MANIA_WD_D",
+      "name": "Reebok_DMX_MAX_MANIA_WD_D",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Reebok_DMX_MAX_MANIA_WD_D/tip/Reebok_DMX_MAX_MANIA_WD_D.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    },
+    {
+      "object_id": "gso_Thomas_Friends_Wooden_Railway_Porter_5JzRhMm3a9o",
+      "name": "Thomas_Friends_Wooden_Railway_Porter_5JzRhMm3a9o",
+      "url": "https://fuel.gazebosim.org/1.0/GoogleResearch/models/Thomas_Friends_Wooden_Railway_Porter_5JzRhMm3a9o/tip/Thomas_Friends_Wooden_Railway_Porter_5JzRhMm3a9o.zip",
+      "license": "Creative Commons Attribution 4.0 International",
+      "license_url": "http://creativecommons.org/licenses/by/4.0/",
+      "source": "GoogleResearch / Google Scanned Objects"
+    }
+  ]
+}

@@ -120,6 +120,16 @@ class SF3DGenerator:
 
         return {
             "upstream_commit": git_revision(UPSTREAM),
+            "model_structure": {
+                "parameters_total": sum(p.numel() for p in self.model.parameters()),
+                "input_image_size": self.model.cfg.cond_image_size,
+                "tetrahedral_resolution": self.model.cfg.isosurface_resolution,
+                "triplane_input_resolution": self.model.cfg.tokenizer["plane_size"],
+                "triplane_output_resolution": self.model.cfg.tokenizer["plane_size"]
+                * self.model.cfg.post_processor["scale_factor"],
+                "triplane_channels": self.model.cfg.post_processor["out_channels"],
+                "transformer_units": self.model.cfg.backbone["num_blocks"],
+            },
             "weights_revision": self.weights_path.name if self.weights_path else None,
             "raw_mesh_coordinates": {
                 "up_axis": "+Y",
