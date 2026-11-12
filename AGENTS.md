@@ -23,6 +23,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 | `src/asset2sim/data/` | 清单解析、程序化参考几何和数据准备 |
 | `src/asset2sim/geometry/` | Mesh 物理准备、坐标变换、可选清理与几何报告 |
 | `src/asset2sim/collision/` | 单凸包和 CoACD 碰撞组件构建、几何误差与失败记录 |
+| `src/asset2sim/simulation/` | MuJoCo 碰撞组件加载、独立参考接触及受控轨迹实验 |
 | `src/asset2sim/experiments/` | 配置解析、公共运行器、结果表导出 |
 | `src/asset2sim/evaluation/` | 公共几何对齐、表面距离、图像指标与论文对照表 |
 | `results/raw/<experiment>/<run_id>/` | 逐对象/视角指标、对齐矩阵与评测渲染 |
@@ -30,7 +31,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 | `results/metrics/`、`results/figures/` | 从运行记录导出的 CSV 与比较图 |
 | `docs/protocols/`、`tests/` | 关键操作与分析；公共接口、几何和评测逻辑测试 |
 
-后续仿真实现放入 `simulation/`。物理几何的输入声明与输出见 [Mesh 物理准备](docs/protocols/mesh_physics_preparation.md)；碰撞组件的输入、配置与输出见 [碰撞几何构建](docs/protocols/collision_geometry.md)。仿真须逐个加载导出的凸组件。共享包保持轻量，各模型的数值库和 GPU 依赖由自己的 Conda 环境管理。
+物理几何的输入声明与输出见 [Mesh 物理准备](docs/protocols/mesh_physics_preparation.md)；碰撞组件的输入、配置与输出见 [碰撞几何构建](docs/protocols/collision_geometry.md)，接触实验见 [MuJoCo 接触评测](docs/protocols/mujoco_contact_evaluation.md)。仿真须逐个加载导出的凸组件。物理实验使用独立的 `asset2sim-physics` Conda 环境；各模型的 GPU 依赖由自己的环境管理。
 
 ## 接入一个模型
 

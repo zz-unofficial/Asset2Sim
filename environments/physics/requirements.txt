@@ -1,0 +1,9 @@
+numpy==1.26.4
+scipy==1.15.3
+trimesh==4.4.1
+coacd==1.0.14
+mujoco==3.3.5
+Pillow==10.4.0
+PyYAML==6.0.2
+pytest>=8,<9
+ruff>=0.8,<1

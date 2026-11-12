@@ -1,0 +1,31 @@
+objects:
+  debug_ring: data/samples/sf3d/reference/debug_ring.glb
+  debug_box: data/samples/sf3d/reference/debug_box.glb
+conditions: [C0, C1, C2, C3]
+collision_config: configs/collision/default.yaml
+body_mode: static
+validate_dynamic_body: true
+body_mass_kg: 1.0
+body_diagonal_inertia_kg_m2: [0.01, 0.01, 0.01]
+probe_radius_m: 0.01
+probe_mass_kg: 0.05
+probe_joint_damping: 1.0
+actuator_kp: 100.0
+trajectory_start_y_m: -0.16
+trajectory_end_y_m: 0.16
+trajectory_samples: 81
+simulation_steps: 1200
+drive_steps: 900
+pass_tolerance_m: 0.01
+reference_tolerance_m: 0.000001
+timing_repeats: 3
+build_repeats: 3
+timestep_s: 0.002
+gravity_m_s2: [0, 0, 0]
+friction: [1.0, 0.005, 0.0001]
+contact_margin_m: 0.004
+contact_gap_m: 0.002
+solref: [0.02, 1]
+solimp: [0.9, 0.95, 0.001, 0.5, 2]
+solver: Newton
+solver_iterations: 50

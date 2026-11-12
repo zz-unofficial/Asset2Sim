@@ -32,6 +32,11 @@ def main() -> int:
     collision.add_argument("--output", type=Path, required=True)
     collision.add_argument("--allow-open", action="store_true")
     collision.add_argument("--assume-prepared", action="store_true")
+    physics_eval = commands.add_parser("physics-eval", help="Evaluate MuJoCo contact behavior")
+    physics_eval.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/debug.yaml"
+    )
+    physics_eval.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -70,6 +75,12 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "physics-eval":
+            from asset2sim.simulation.evaluate import run_physics_eval
+
+            result = run_physics_eval(args.config, args.output)
+            print(f"Physics evaluation {result['status']}: {args.output}")
+            return 0 if result["status"] == "completed" else 1
         if args.command == "build-collision":
             from asset2sim.collision import build_collision
 

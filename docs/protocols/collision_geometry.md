@@ -1,6 +1,6 @@
 # 碰撞几何构建
 
-碰撞模块接收 `prepare-mesh` 输出的 `normalized.glb`，沿用 Z-up、米制和已有坐标，不读取生成模型或 Ground Truth。CoACD 不需要独立环境，在已有 SF3D 或 SPAR3D 环境中安装碰撞依赖后运行：
+碰撞模块接收 `prepare-mesh` 输出的 `normalized.glb`，沿用 Z-up、米制和已有坐标，不读取生成模型或 Ground Truth。CoACD 可在已有 SF3D 或 SPAR3D 环境中使用；MuJoCo 接触实验也提供独立的 `asset2sim-physics` 环境，见 [MuJoCo 接触评测](mujoco_contact_evaluation.md)。在模型环境安装碰撞依赖后运行：
 
 ```bash
 conda activate asset2sim-sf3d
