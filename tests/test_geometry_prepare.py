@@ -1,10 +1,20 @@
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
 import trimesh
 
-from asset2sim.geometry.prepare import PreparationOptions, inspect_mesh, load_geometry, prepare_mesh
+from asset2sim.geometry.prepare import (
+    PreparationOptions,
+    compare_export,
+    inspect_mesh,
+    load_geometry,
+    physical_status,
+    prepare_mesh,
+)
 
 
 def test_scene_expands_nested_transform_and_repeated_instances(tmp_path):
@@ -52,6 +62,9 @@ def test_reference_preserves_meters_coordinates_and_source(tmp_path):
     report = json.loads((out / "mesh_report.json").read_text())
     assert report["after"]["valid_volume"]
     assert report["after"]["watertight"]
+    assert report["after_export"]["valid_volume"]
+    assert report["export_validation"]["passed"]
+    assert metadata["physical_adaptation"]["status"] == "ready"
     with pytest.raises(FileExistsError):
         prepare_mesh(source, out, PreparationOptions("reference"))
 
@@ -164,7 +177,100 @@ def test_split_uv_vertices_are_diagnosed_and_only_welded_when_requested(tmp_path
     assert not report["watertight"]
     assert report["coincident_vertices"] > 0
     assert report["position_merged_diagnostic"]["watertight"]
+    assert physical_status(report)["topology"] == "coincident_seam_candidate"
+    assert physical_status(report)["status"] == "needs_repair"
     merged = tmp_path / "merged"
     meta = prepare_mesh(path, merged, PreparationOptions("reference", merge_coincident=True))
     assert json.loads((merged / "mesh_report.json").read_text())["after"]["watertight"]
     assert meta["operations"][-1]["operation"] == "merge_coincident_vertices"
+    assert meta["physical_adaptation"]["status"] == "ready"
+
+
+def test_nonmanifold_edge_is_reported_as_geometry_issue():
+    mesh = trimesh.Trimesh(
+        vertices=[[0, 0, 0], [0.2, 0, 0], [0, 0.1, 0], [0, -0.1, 0], [0, 0, 0.1]],
+        faces=[[0, 1, 2], [1, 0, 3], [0, 1, 4]],
+        process=False,
+    )
+    report = inspect_mesh(mesh)
+    assert report["nonmanifold_edges"] == 1
+    assert "nonmanifold_edges" in report["issues"]
+    assert physical_status(report)["status"] == "needs_repair"
+    assert physical_status(report)["topology"] == "geometry_review"
+
+
+def test_roundtrip_comparison_detects_reversed_face_winding():
+    mesh = trimesh.creation.box(extents=[0.2, 0.1, 0.1])
+    flipped = mesh.copy()
+    flipped.invert()
+    validation = compare_export(inspect_mesh(mesh), inspect_mesh(flipped), 0.2, mesh, flipped)
+    assert validation["checks"]["vertex_positions_preserved"]
+    assert not validation["checks"]["triangle_connectivity_preserved"]
+    assert not validation["passed"]
+
+
+def test_export_geometry_mismatch_fails_with_diagnostics(tmp_path, monkeypatch):
+    from asset2sim.geometry import prepare
+
+    source = tmp_path / "box.glb"
+    trimesh.creation.box(extents=[0.2, 0.1, 0.1]).export(source)
+    load = prepare.load_geometry
+
+    def tampered(path):
+        mesh, nodes = load(path)
+        if path.name == "normalized.glb":
+            mesh.vertices[0, 0] += 0.01
+        return mesh, nodes
+
+    monkeypatch.setattr(prepare, "load_geometry", tampered)
+    output = tmp_path / "failed"
+    with pytest.raises(ValueError, match="round-trip"):
+        prepare_mesh(source, output, PreparationOptions("reference"))
+    report = json.loads((output / "mesh_report.json").read_text())
+    assert report["after_export"] is not None
+    assert not report["export_validation"]["checks"]["vertex_positions_preserved"]
+    assert report["physical_adaptation"]["status"] == "invalid"
+
+
+@pytest.mark.parametrize("name", ["debug_box", "debug_cup", "debug_ring", "debug_bracket"])
+def test_actual_debug_reference_through_cli(tmp_path, name):
+    root = Path(__file__).resolve().parents[1]
+    source = root / "data/samples/sf3d/reference" / f"{name}.glb"
+    before = source.read_bytes()
+    output = tmp_path / name
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "asset2sim.cli",
+            "prepare-mesh",
+            "--kind",
+            "reference",
+            "--mesh",
+            str(source),
+            "--output",
+            str(output),
+        ],
+        check=True,
+    )
+    report = json.loads((output / "mesh_report.json").read_text())
+    assert report["export_validation"]["passed"]
+    assert report["after_export"]["longest_extent"] == pytest.approx(0.2, abs=1e-6)
+    assert report["physical_adaptation"]["status"] == "ready"
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize("model", ["sf3d", "spar3d"])
+def test_actual_generated_mesh_roundtrip(tmp_path, model):
+    root = Path(__file__).resolve().parents[1]
+    run = root / "data/generated" / model / "paper_gso/run02"
+    source = run / "gso_SNAIL_MEASURING_TAPE/mesh.glb"
+    if not source.exists() or not (run / "results.jsonl").exists():
+        pytest.skip("Local generated asset is not available")
+    output = tmp_path / model
+    metadata = prepare_mesh(source, output, PreparationOptions("generated"), run)
+    report = json.loads((output / "mesh_report.json").read_text())
+    assert report["export_validation"]["passed"]
+    assert report["after_export"]["longest_extent"] == pytest.approx(0.2, abs=1e-6)
+    assert metadata["physical_adaptation"]["status"] == "needs_repair"
+    assert report["physical_adaptation"]["topology"] == "uv_seam_candidate"

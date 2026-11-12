@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import trimesh
+from scipy.spatial import cKDTree
 
 from asset2sim.artifacts import read_jsonl, write_json
 
@@ -77,6 +78,11 @@ def inspect_mesh(
         "issues": [],
         "area_threshold": min_area,
         "unreferenced_vertices": None,
+        "boundary_edges": None,
+        "nonmanifold_edges": None,
+        "duplicate_faces": None,
+        "surface_area": None,
+        "uv_split_positions": 0,
     }
     if not finite:
         report["issues"].append("non_finite_vertices")
@@ -87,6 +93,11 @@ def inspect_mesh(
     report["unreferenced_vertices"] = int(len(vertices) - len(np.unique(faces)))
     if report["unreferenced_vertices"]:
         report["issues"].append("unreferenced_vertices")
+    _, edge_counts = np.unique(mesh.edges_sorted, axis=0, return_counts=True)
+    report["boundary_edges"] = int(np.count_nonzero(edge_counts == 1))
+    report["nonmanifold_edges"] = int(np.count_nonzero(edge_counts > 2))
+    _, face_counts = np.unique(np.sort(faces, axis=1), axis=0, return_counts=True)
+    report["duplicate_faces"] = int(np.maximum(face_counts - 1, 0).sum())
     bounds = mesh.bounds
     report["aabb"] = bounds.tolist()
     report["longest_extent"] = float(mesh.extents.max())
@@ -95,6 +106,7 @@ def inspect_mesh(
         report["issues"].append("non_finite_triangle_area")
         return report
     report["degenerate_faces"] = int(np.count_nonzero(areas <= min_area))
+    report["surface_area"] = float(areas.sum())
     report["connected_components"] = len(
         trimesh.graph.connected_components(
             mesh.face_adjacency, nodes=np.arange(len(faces)), min_len=1
@@ -107,6 +119,10 @@ def inspect_mesh(
     report["valid_volume"] = bool(mesh.is_volume and np.isfinite(volume) and volume > 0)
     if report["degenerate_faces"]:
         report["issues"].append("degenerate_triangles")
+    if report["nonmanifold_edges"]:
+        report["issues"].append("nonmanifold_edges")
+    if report["duplicate_faces"]:
+        report["issues"].append("duplicate_faces")
     if report["connected_components"] > 1:
         report["issues"].append("multiple_components")
     if not report["watertight"]:
@@ -121,6 +137,11 @@ def inspect_mesh(
         vertices_unique, inverse = np.unique(vertices, axis=0, return_inverse=True)
         report["coincident_vertices"] = int(len(vertices) - len(vertices_unique))
         if report["coincident_vertices"]:
+            uv = getattr(mesh.visual, "uv", None)
+            if uv is not None and np.shape(uv) == (len(vertices), 2) and np.isfinite(uv).all():
+                distinct = np.unique(np.column_stack((inverse, uv)), axis=0)
+                counts = np.bincount(distinct[:, 0].astype(int), minlength=len(vertices_unique))
+                report["uv_split_positions"] = int(np.count_nonzero(counts > 1))
             # Diagnostic only: separate touching objects can also share coordinates.
             probe = trimesh.Trimesh(vertices=vertices_unique, faces=inverse[faces], process=False)
             report["position_merged_diagnostic"] = inspect_mesh(probe, min_area, False)
@@ -128,6 +149,117 @@ def inspect_mesh(
         else:
             report["position_merged_diagnostic"] = None
     return report
+
+
+def physical_status(report: dict[str, Any], roundtrip_ok: bool = True) -> dict[str, Any]:
+    """Classify the exported indexed mesh; position welding remains diagnostic only."""
+    fatal = {
+        "non_finite_vertices",
+        "invalid_face_indices",
+        "non_finite_triangle_area",
+        "zero_extent",
+    }
+    issues = set(report["issues"])
+    if not roundtrip_ok or issues & fatal or not report["vertices"] or not report["faces"]:
+        return {"status": "invalid", "reasons": sorted(issues & fatal) or ["export_mismatch"]}
+    merged = report.get("position_merged_diagnostic")
+    seam_candidate = bool(
+        not report["watertight"]
+        and merged
+        and merged["watertight"]
+        and merged["valid_volume"]
+        and not merged["nonmanifold_edges"]
+        and not merged["degenerate_faces"]
+        and not merged["duplicate_faces"]
+    )
+    reasons = sorted(issues)
+    topology = "geometry_review"
+    if seam_candidate:
+        topology = (
+            "uv_seam_candidate" if report["uv_split_positions"] else "coincident_seam_candidate"
+        )
+        reasons.append(topology)
+    if reasons:
+        return {
+            "status": "needs_repair",
+            "reasons": reasons,
+            "topology": topology,
+        }
+    return {"status": "ready", "reasons": [], "topology": "closed_indexed_mesh"}
+
+
+def compare_export(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    target: float,
+    source_mesh: trimesh.Trimesh,
+    exported_mesh: trimesh.Trimesh,
+) -> dict[str, Any]:
+    """Compare float32 GLB geometry with the prepared mesh, including cleanup effects."""
+    atol = max(1e-7, target * 1e-6)
+    first = before.get("position_merged_diagnostic") or before
+    second = after.get("position_merged_diagnostic") or after
+    vertex_error = None
+    connectivity_preserved = False
+    if after["finite_vertices"]:
+        source_vertices = np.asarray(source_mesh.vertices)
+        exported_vertices = np.asarray(exported_mesh.vertices)
+        vertex_error = float(
+            max(
+                cKDTree(source_vertices).query(exported_vertices)[0].max(),
+                cKDTree(exported_vertices).query(source_vertices)[0].max(),
+            )
+        )
+        unique_vertices, source_ids = np.unique(source_vertices, axis=0, return_inverse=True)
+        _, exported_ids = cKDTree(unique_vertices).query(exported_vertices)
+
+        def oriented_faces(faces: np.ndarray) -> np.ndarray:
+            # Cyclic rotations are equivalent; reversed winding is not.
+            rotations = np.stack([faces, np.roll(faces, -1, axis=1), np.roll(faces, -2, axis=1)])
+            order = np.lexsort((rotations[:, :, 2], rotations[:, :, 1], rotations[:, :, 0]), axis=0)
+            canonical = rotations[order[0], np.arange(len(faces))]
+            return canonical[np.lexsort((canonical[:, 2], canonical[:, 1], canonical[:, 0]))]
+
+        original = oriented_faces(source_ids[source_mesh.faces])
+        recovered = oriented_faces(exported_ids[exported_mesh.faces])
+        connectivity_preserved = bool(np.array_equal(original, recovered))
+    topology_keys = (
+        "faces",
+        "degenerate_faces",
+        "boundary_edges",
+        "nonmanifold_edges",
+        "duplicate_faces",
+        "connected_components",
+        "watertight",
+        "winding_consistent",
+        "valid_volume",
+    )
+    checks = {
+        "finite_vertices": bool(after["finite_vertices"]),
+        "aabb_preserved": bool(
+            after["aabb"] is not None
+            and np.allclose(before["aabb"], after["aabb"], atol=atol, rtol=1e-6)
+        ),
+        "target_extent": bool(
+            after["longest_extent"] is not None
+            and np.isclose(after["longest_extent"], target, atol=atol, rtol=1e-6)
+        ),
+        "topology_preserved": all(first.get(key) == second.get(key) for key in topology_keys),
+        "cleaning_preserved": before["degenerate_faces"] == after["degenerate_faces"]
+        and before["unreferenced_vertices"] == after["unreferenced_vertices"],
+        "vertex_positions_preserved": vertex_error is not None and vertex_error <= atol,
+        "triangle_connectivity_preserved": connectivity_preserved,
+        "surface_area_preserved": bool(
+            after["surface_area"] is not None
+            and np.isclose(before["surface_area"], after["surface_area"], atol=atol**2, rtol=1e-5)
+        ),
+    }
+    return {
+        "passed": all(checks.values()),
+        "absolute_tolerance_m": atol,
+        "maximum_vertex_error_m": vertex_error,
+        "checks": checks,
+    }
 
 
 def generated_coordinates(source: Path, run_dir: Path) -> tuple[np.ndarray, dict]:
@@ -180,7 +312,12 @@ def prepare_mesh(
         "operations": [],
         "physical_coordinates": {"up_axis": "+Z", "units": "meters"},
     }
-    report: dict[str, Any] = {"status": "running", "before": None, "after": None}
+    report: dict[str, Any] = {
+        "status": "running",
+        "before": None,
+        "after": None,
+        "after_export": None,
+    }
     try:
         options.validate()
         if options.kind == "reference" and run_dir is not None:
@@ -272,12 +409,23 @@ def prepare_mesh(
             raise ValueError("No triangles remain after cleaning")
         report["after"] = inspect_mesh(mesh, options.min_triangle_area_m2)
         mesh.export(output / "normalized.glb")
+        exported, _ = load_geometry(output / "normalized.glb")
+        report["after_export"] = inspect_mesh(exported, options.min_triangle_area_m2)
+        report["export_validation"] = compare_export(
+            report["after"], report["after_export"], options.target_extent_m, mesh, exported
+        )
+        if not report["export_validation"]["passed"]:
+            raise ValueError("Exported mesh failed round-trip validation")
+        report["physical_adaptation"] = physical_status(report["after_export"])
+        metadata["physical_adaptation"] = report["physical_adaptation"]
         metadata.update(status="completed", output="normalized.glb")
         report["status"] = "completed"
     except Exception as error:
         message = f"{type(error).__name__}: {error}"
         metadata.update(status="failed", error=message)
-        report.update(status="failed", error=message)
+        adaptation = {"status": "invalid", "reasons": [message]}
+        metadata["physical_adaptation"] = adaptation
+        report.update(status="failed", error=message, physical_adaptation=adaptation)
         raise
     finally:
         write_json(output / "metadata.json", metadata)
