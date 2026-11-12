@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import gc
+import importlib
 import os
 import random
 import sys
 import time
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,7 @@ from asset2sim.paths import PROJECT_ROOT
 UPSTREAM = PROJECT_ROOT / "third_party/stable-point-aware-3d"
 os.environ.setdefault("ALPHA_CLIP_PATH", str(PROJECT_ROOT / ".local/alpha_clip"))
 os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
 @dataclass
@@ -94,6 +98,12 @@ class SPAR3DGenerator(SF3DGenerator):
         sys.path.insert(0, str(UPSTREAM))
         from spar3d.system import SPAR3D
 
+        # Low-VRAM mode recreates the estimator for each input; reuse the first
+        # successful upstream cache lookup rather than hashing the CLIP file each time.
+        alpha_clip = importlib.import_module("alpha_clip.alpha_clip")
+        if not hasattr(alpha_clip._download, "cache_info"):
+            alpha_clip._download = lru_cache(maxsize=4)(alpha_clip._download)
+
         torch.set_num_threads(self.config.cpu_threads)
         self.weights_path = fetch_assets(self.parameters)
         self.model = SPAR3D.from_pretrained(
@@ -148,11 +158,27 @@ class SPAR3DGenerator(SF3DGenerator):
             self.background_mode = "provided_alpha"
         return foreground_crop(image, self.config.foreground_ratio)
 
+    def recover(self) -> None:
+        """Release all staged modules after inference or an interrupted stage."""
+        import torch
+
+        if self.model is not None and getattr(self.model, "is_low_vram", False):
+            self.model._unload_pdiff_modules()
+            self.model._unload_main_modules()
+            self.model._unload_estimator_modules()
+            # Upstream retains the decoder for texture baking between stages.
+            self.model.decoder = None
+        gc.collect()
+        if self.config.device == "cuda":
+            torch.cuda.empty_cache()
+
     def generate(self, image_path: Path, output_dir: Path) -> dict[str, Any]:
         import torch
 
         if self.model is None:
             raise RuntimeError("Call load() before generate()")
+        # A previous exception can retain tensors until the caller exits its handler.
+        self.recover()
         output_dir.mkdir(parents=True, exist_ok=False)
         random.seed(self.config.seed)
         np.random.seed(self.config.seed)
@@ -189,7 +215,7 @@ class SPAR3DGenerator(SF3DGenerator):
         export_seconds = time.perf_counter() - start
         start = time.perf_counter()
         auxiliary["point_clouds"][0].export(output_dir / "points.ply")
-        return {
+        result = {
             "background_mode": self.background_mode,
             "preprocess_seconds": preprocess,
             "inference_seconds": inference,
@@ -201,6 +227,9 @@ class SPAR3DGenerator(SF3DGenerator):
             "point_cloud": f"{output_dir.name}/points.ply",
             "points": len(auxiliary["point_clouds"][0].vertices),
         }
+        del auxiliary
+        self.recover()
+        return result
 
 
 def create_generator(parameters: dict[str, Any]) -> SPAR3DGenerator:

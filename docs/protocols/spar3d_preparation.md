@@ -12,6 +12,8 @@ asset2sim fetch --model spar3d --config configs/models/spar3d.yaml
 
 首次使用需要在 [官方模型页](https://huggingface.co/stabilityai/stable-point-aware-3d) 接受访问条件，并在本机登录 Hugging Face。项目缓存位于 `.local/huggingface/hub/` 和 `.local/alpha_clip/`。本机 8GB 显卡使用官方 `low_vram=true`；默认 BF16、纹理 1024、裁剪比 1.3、种子 0、无重网格化。官方权重配置使用 32 次点扩散采样，运行记录保存实际步数和引导参数。RGBA 输入直接使用已有掩码；普通 RGB 输入使用官方背景移除器。
 
+批量推理在对象之间释放低显存模式的阶段模块，并启用 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`。AlphaCLIP 资源在进程内复用首次成功的缓存定位，避免逐对象重复读取并校验大文件。RTX 5060 的连续 6 对象验证全部成功，PyTorch 峰值分配约 6,440–6,494 MiB，平均推理约 10.84 秒；早期 `run01` 记录了 1/24 成功及显存不足问题，保留用于定位。
+
 ## 运行与评测
 
 小样例共用 `data/manifests/debug.jsonl`，两组正式对象与 SF3D 使用相同的 GSO、OmniObject3D 清单。运行目录使用新的 `run_id`：

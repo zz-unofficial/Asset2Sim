@@ -13,6 +13,7 @@ source "$SPAR3D_CONDA_BASE/etc/profile.d/conda.sh"
 conda activate asset2sim-spar3d
 set -u
 export PYTHONUNBUFFERED=1
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 for dataset in gso omni; do
     for output in "data/generated/spar3d/paper_${dataset}/$RUN_ID" \
         "results/raw/spar3d_paper_${dataset}/$RUN_ID" \

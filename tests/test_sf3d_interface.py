@@ -82,3 +82,29 @@ def test_spar3d_generator_exports_mesh_and_sampled_points(tmp_path, monkeypatch)
     assert result["points"] == 1
     assert (tmp_path / result["point_cloud"]).is_file()
     assert (tmp_path / "sample/mesh.glb").is_file()
+
+
+def test_spar3d_recovery_releases_all_staged_modules():
+    from asset2sim.generation.spar3d import SPAR3DConfig, SPAR3DGenerator
+
+    class StagedModel:
+        is_low_vram = True
+        decoder = object()
+
+        def __init__(self):
+            self.loaded = {"points", "main", "estimator"}
+
+        def _unload_pdiff_modules(self):
+            self.loaded.discard("points")
+
+        def _unload_main_modules(self):
+            self.loaded.discard("main")
+
+        def _unload_estimator_modules(self):
+            self.loaded.discard("estimator")
+
+    generator = SPAR3DGenerator(SPAR3DConfig(device="cpu"))
+    generator.model = StagedModel()
+    generator.recover()
+    assert not generator.model.loaded
+    assert generator.model.decoder is None
