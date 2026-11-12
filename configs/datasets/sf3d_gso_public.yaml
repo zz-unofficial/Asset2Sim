@@ -1,5 +1,7 @@
 name: sf3d_gso_public24
 source: gso
+source_up_axis: Z
+render_mode: texture
 sample_count: 24
 seed: 0
 selection_file: ../../experiments/datasets/sf3d_gso_public.json

@@ -1,0 +1,37 @@
+{
+  "selection_rule": "ranks 1, one-third, two-thirds, last by CD",
+  "objects": [
+    {
+      "sample_id": "omni_battery_battery_001",
+      "cd_rank": 1,
+      "views": [
+        1,
+        9
+      ]
+    },
+    {
+      "sample_id": "omni_bumbag_bumbag_008",
+      "cd_rank": 8,
+      "views": [
+        0,
+        8
+      ]
+    },
+    {
+      "sample_id": "omni_book_book_027",
+      "cd_rank": 16,
+      "views": [
+        8,
+        0
+      ]
+    },
+    {
+      "sample_id": "omni_book_book_003",
+      "cd_rank": 24,
+      "views": [
+        8,
+        0
+      ]
+    }
+  ]
+}

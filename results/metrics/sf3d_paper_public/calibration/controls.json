@@ -1,0 +1,12 @@
+{
+  "texture_independent_of_base_color_factor": true,
+  "identity_ssim": 1.0,
+  "identity_lpips": 0.0,
+  "identity_mask_iou": 1.0,
+  "texture_center_rgb": [
+    80,
+    140,
+    200
+  ],
+  "note": "Actual EGL render; constant texture and identical geometry/camera"
+}

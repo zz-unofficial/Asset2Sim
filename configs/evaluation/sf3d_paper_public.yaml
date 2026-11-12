@@ -1,7 +1,7 @@
-name: sf3d_paper_public_v1
+name: sf3d_paper_public
 paper: https://arxiv.org/abs/2408.00653
 # Paper Table 1 thresholds; numerical implementation choices are recorded below.
-fscore_thresholds: [0.1, 0.2, 0.5]
+fscore_thresholds: [0.01, 0.02, 0.05, 0.1, 0.2, 0.5]
 normalization_extent: 1.0
 surface_points: 20000
 alignment_points: 1024
@@ -13,4 +13,9 @@ seed: 0
 image_metrics: true
 lpips_network: alex
 cpu_threads: 8
+image_alignment: rigid
+render_modes: [texture, pbr]
+diagnostic_bounded_scale: false
+image_scale_bounds: [0.9, 1.1]
+minimum_render_views: 16
 

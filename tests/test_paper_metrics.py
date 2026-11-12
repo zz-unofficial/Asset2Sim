@@ -1,13 +1,17 @@
 import numpy as np
 import pytest
 import trimesh
+from PIL import Image
 
 from asset2sim.evaluation.geometry import (
     align_surfaces,
+    bounded_symmetric_icp,
+    distance_summary,
     normalized_mesh,
     surface_metrics,
     transform_points,
 )
+from asset2sim.evaluation.paper import aggregate_views, silhouette_metrics, summarize_records
 
 
 def test_chamfer_is_unsquared_bidirectional_mean_and_fscore_uses_both_sides():
@@ -77,3 +81,105 @@ def test_similarity_refinement_can_recover_scale():
     target = points * 1.3 + [0.1, -0.2, 0.3]
     transform = rigid_fit(points, target, scale=True)
     np.testing.assert_allclose(transform_points(points, transform), target, atol=1e-10)
+
+
+def test_y_up_source_transform_is_proper_and_matches_reference_frame():
+    from asset2sim.data.paper import source_to_z_up
+
+    transform = source_to_z_up("Y")
+    np.testing.assert_array_equal(transform_points(np.array([[0, 1, 0]]), transform), [[0, 0, 1]])
+    assert np.linalg.det(transform[:3, :3]) == 1
+    with pytest.raises(ValueError, match="source_up_axis"):
+        source_to_z_up("X")
+
+
+def test_bounded_scale_cannot_accumulate_shrinkage_and_keeps_symmetric_improvement():
+    source = np.random.default_rng(4).normal(size=(200, 3))
+    target = source * 0.4 + [0.02, -0.04, 0.01]
+    result, info = bounded_symmetric_icp(source, target, np.eye(4), (0.9, 1.1), 100)
+    assert 0.9 - 1e-9 <= np.cbrt(np.linalg.det(result[:3, :3])) <= 1.1 + 1e-9
+    assert info["final_cd"] <= info["initial_cd"]
+    assert surface_metrics(transform_points(source, result), target, [])[
+        "chamfer_l1"
+    ] == pytest.approx(info["final_cd"])
+
+
+def test_identity_alignment_is_not_changed_by_similarity_refinement():
+    points = np.random.default_rng(1).normal(size=(80, 3))
+    result, info = bounded_symmetric_icp(points, points, np.eye(4))
+    np.testing.assert_allclose(result, np.eye(4))
+    assert info["scale"] == 1
+    assert info["accepted_iterations"] == 0
+    with pytest.raises(ValueError, match="contain 1"):
+        bounded_symmetric_icp(points, points, np.eye(4), (0.5, 0.8))
+
+
+def test_strict_fscore_and_quantiles_have_known_distance_units():
+    a = np.array([[0.0, 0, 0], [1.0, 0, 0]])
+    b = a + [0, 0.015, 0]
+    scores = surface_metrics(a, b, [0.01, 0.02, 0.05])
+    assert scores["fscore@0.01"] == 0
+    assert scores["fscore@0.02"] == 1
+    assert scores["fscore@0.05"] == 1
+    assert distance_summary(a, b)["hausdorff95"] == pytest.approx(0.015)
+
+
+def test_mask_iou_penalizes_a_missing_shape_even_when_both_rgb_images_are_white():
+    reference = Image.new("RGBA", (8, 8), (255, 255, 255, 0))
+    reference.paste((255, 255, 255, 255), (2, 2, 6, 6))
+    predicted = Image.new("RGBA", (8, 8), (255, 255, 255, 0))
+    result = silhouette_metrics(predicted, reference)
+    assert result["mask_iou"] == 0
+    assert result["foreground_area_ratio"] == 0
+    assert result["psnr_foreground"] == 120
+    with pytest.raises(ValueError, match="no foreground"):
+        silhouette_metrics(predicted, predicted)
+
+
+def test_conditioning_view_is_excluded_from_novel_view_mean():
+    result = aggregate_views([{"psnr": 30}, {"psnr": 10}, {"psnr": 20}], 0)
+    assert result == {"psnr": 20, "input_psnr": 30, "novel_psnr": 15}
+
+
+def test_per_metric_denominators_keep_geometry_when_image_evaluation_fails():
+    result = summarize_records(
+        [
+            {
+                "status": "ok",
+                "geometry_status": "ok",
+                "image_status": "ok",
+                "chamfer_l1": 0.1,
+                "psnr": 20.0,
+            },
+            {
+                "status": "failed",
+                "geometry_status": "ok",
+                "image_status": "failed",
+                "chamfer_l1": 0.3,
+            },
+        ]
+    )
+    assert result["planned"] == 2
+    assert result["successful"] == 1
+    assert result["geometry_successful"] == 2
+    assert result["chamfer_l1"] == pytest.approx(0.2)
+    assert result["metric_counts"]["chamfer_l1"] == 2
+    assert result["metric_counts"]["psnr"] == 1
+
+
+def test_reports_reject_different_image_settings_before_writing(tmp_path):
+    import json
+
+    from asset2sim.evaluation.report import write_report
+
+    paths = []
+    for version in (1, 2):
+        folder = tmp_path / f"v{version}"
+        folder.mkdir()
+        (folder / "evaluation.json").write_text(
+            json.dumps({"image_metrics_definition": f"setting_{version}"})
+        )
+        paths.append(folder)
+    with pytest.raises(ValueError, match="Image settings differ"):
+        write_report(paths, tmp_path / "report")
+    assert not (tmp_path / "report").exists()

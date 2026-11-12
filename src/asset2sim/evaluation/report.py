@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 from asset2sim.artifacts import read_jsonl, write_json
-from asset2sim.paths import PROJECT_ROOT
 
 
 def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | None:
@@ -32,7 +31,12 @@ def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | Non
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.load_default()
     for index, title in enumerate(
-        ("GT: input view", "SF3D: input view", "GT: opposite view", "SF3D: opposite view")
+        (
+            "GT: input view",
+            f"{metadata['model']}: input view",
+            "GT: opposite view",
+            f"{metadata['model']}: opposite view",
+        )
     ):
         draw.text((index * width + 6, 8), title, font=font, fill="black")
     selection = []
@@ -44,10 +48,17 @@ def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | Non
         first = reference["conditioning_view"]
         opposite = (first + len(reference["views"]) // 2) % len(reference["views"])
         predicted = directory / "renders" / row["sample_id"]
+        reference_folder = (
+            predicted / "reference/texture" if (predicted / "reference/texture").is_dir() else None
+        )
         paths = (
-            render_path.parent / reference["views"][first]["image"],
+            reference_folder / f"{first:03d}.png"
+            if reference_folder
+            else render_path.parent / reference["views"][first]["image"],
             predicted / f"{first:03d}.png",
-            render_path.parent / reference["views"][opposite]["image"],
+            reference_folder / f"{opposite:03d}.png"
+            if reference_folder
+            else render_path.parent / reference["views"][opposite]["image"],
             predicted / f"{opposite:03d}.png",
         )
         for column, path in enumerate(paths):
@@ -79,82 +90,109 @@ def qualitative_sheet(directory: Path, dataset: str, output: Path) -> Path | Non
 
 
 def write_report(evaluations: list[Path], output: Path) -> None:
-    reference = json.loads((PROJECT_ROOT / "experiments/references/sf3d_paper.json").read_text())
+    """Export strict geometry, texture appearance, and source-material PBR separately."""
+    definitions = {
+        json.loads((path / "evaluation.json").read_text()).get(
+            "image_metrics_definition", "scaled_source_material"
+        )
+        for path in evaluations
+    }
+    if len(definitions) > 1:
+        raise ValueError("Image settings differ; summarize them separately")
     rows = []
-    names = [
-        "chamfer_l1",
-        "fscore@0.1",
-        "fscore@0.2",
-        "fscore@0.5",
-        "psnr",
-        "ssim",
-        "lpips",
-        "image_to_mesh_seconds",
-    ]
     for directory in evaluations:
-        evaluation = json.loads((directory / "evaluation.json").read_text())
-        for dataset, metrics in evaluation["datasets"].items():
+        metadata = json.loads((directory / "evaluation.json").read_text())
+        for dataset, metrics in metadata["datasets"].items():
             rows.append(
                 {
                     "dataset": dataset,
-                    "source": "measured_public_subset",
-                    "device": evaluation["device"],
-                    "planned": metrics["planned"],
-                    "successful": metrics["successful"],
-                    **{name: metrics.get(name) for name in names},
+                    "model": metadata["model"],
+                    "protocol": metadata["profile"]["name"],
+                    "device": metadata["device"],
+                    **{key: value for key, value in metrics.items() if key != "metric_counts"},
                 }
             )
-            if dataset in reference["table_1"]:
-                paper = reference["table_1"][dataset]
-                rows.append(
-                    {
-                        "dataset": dataset,
-                        "source": "paper_reported",
-                        "device": reference["runtime"]["gpu"],
-                        "planned": paper["objects"],
-                        "successful": paper["objects"],
-                        **{
-                            name: paper.get(
-                                name,
-                                reference["table_a1"][dataset].get(
-                                    name, reference["runtime"].get(name)
-                                ),
-                            )
-                            for name in names
-                        },
-                    }
-                )
+    if not rows:
+        raise ValueError("No dataset measurements to report")
     output.mkdir(parents=True, exist_ok=False)
+    columns = list(dict.fromkeys(key for row in rows for key in row))
     with (output / "comparison.csv").open("x", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
     lines = [
-        "# SF3D 论文指标与公开子集实测",
+        "# 公开子集统一评测",
         "",
-        "| 数据 | 来源 | 设备 | 有效/计划 | CD | FS@0.1 | FS@0.2 | FS@0.5 | PSNR | SSIM | LPIPS | 图像→Mesh 秒 |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "主图像指标采用固定尺度、无光照贴图 RGB；PBR 材质渲染独立成表。各指标有效分母见 evaluation.json。",
+        "",
     ]
-    for row in rows:
-        values = [f"{row[name]:.4f}" if row.get(name) is not None else "—" for name in names]
-        lines.append(
-            f"| {row['dataset']} | {row['source']} | {row['device']} | {row['successful']}/{row['planned']} | "
-            + " | ".join(values)
-            + " |"
+    sections = [
+        (
+            "几何与轮廓",
+            [
+                ("CD↓", "chamfer_l1"),
+                ("FS@1%↑", "fscore@0.01"),
+                ("FS@2%↑", "fscore@0.02"),
+                ("FS@5%↑", "fscore@0.05"),
+                ("HD95↓", "hausdorff95"),
+                ("IoU↑", "mask_iou"),
+            ],
+        ),
+        (
+            "贴图 RGB（主指标）",
+            [
+                ("PSNR↑", "psnr"),
+                ("SSIM↑", "ssim"),
+                ("LPIPS↓", "lpips"),
+                ("新视角 PSNR↑", "novel_psnr"),
+                ("新视角 LPIPS↓", "novel_lpips"),
+                ("前景并集 PSNR↑", "psnr_foreground"),
+            ],
+        ),
+        (
+            "原始材质 PBR（辅助指标）",
+            [
+                ("PSNR↑", "pbr_psnr"),
+                ("SSIM↑", "pbr_ssim"),
+                ("LPIPS↓", "pbr_lpips"),
+                ("新视角 LPIPS↓", "pbr_novel_lpips"),
+            ],
+        ),
+    ]
+    if any("bounded_scale" in row for row in rows):
+        sections.append(
+            (
+                "尺度诊断（主指标仍固定尺度）",
+                [
+                    ("有界尺度", "bounded_scale"),
+                    ("固定尺度 IoU↑", "mask_iou"),
+                    ("有界尺度 IoU↑", "bounded_mask_iou"),
+                    ("固定尺度 PSNR↑", "psnr"),
+                    ("有界尺度 PSNR↑", "bounded_psnr"),
+                ],
+            )
         )
-    lines += [
-        "",
-        "实测采用固定公开对象清单，数据与数值设置见各 evaluation.json。论文行来自 [SF3D 表 1 与表 A1](https://arxiv.org/abs/2408.00653)。运行时间对应各行记录的设备。",
-        "",
-    ]
+    for title, fields in sections:
+        lines += [
+            f"## {title}",
+            "",
+            "| 数据 | 有效/计划 | " + " | ".join(label for label, _ in fields) + " |",
+            "| --- | --- | " + " | ".join("---" for _ in fields) + " |",
+        ]
+        for row in rows:
+            values = [f"{row[key]:.5f}" if row.get(key) is not None else "—" for _, key in fields]
+            lines.append(
+                f"| {row['dataset']} | {row['successful']}/{row['planned']} | "
+                + " | ".join(values)
+                + " |"
+            )
+        lines.append("")
     for directory in evaluations:
         metadata = json.loads((directory / "evaluation.json").read_text())
         for dataset in metadata["datasets"]:
             figure = qualitative_sheet(directory, dataset, output)
             if figure:
-                lines += [
-                    f"[查看 {dataset} 重建对照图]({figure.name})：按 CD 排名固定选择四个位置，展示输入与相反视角。",
-                    "",
-                ]
+                lines += [f"[{dataset} 固定排名案例图]({figure.name})", ""]
+    lines += ["论文表 1 的宽阈值保留在 CSV；不同图像设置的实验分别汇总。", ""]
     (output / "comparison.md").write_text("\n".join(lines))
-    print(f"Paper comparison: {output / 'comparison.md'}")
+    print(f"Standard comparison: {output / 'comparison.md'}")

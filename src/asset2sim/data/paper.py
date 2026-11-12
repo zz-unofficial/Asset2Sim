@@ -156,6 +156,16 @@ def load_source_mesh(path: Path, dataset: str):
     return mesh
 
 
+def source_to_z_up(axis: str) -> np.ndarray:
+    """Declare source axes explicitly; keep a right-handed Z-up reference frame."""
+    transform = np.eye(4)
+    if axis == "Y":
+        transform[:3, :3] = [[1, 0, 0], [0, 0, -1], [0, 1, 0]]
+    elif axis != "Z":
+        raise ValueError("source_up_axis must be Y or Z")
+    return transform
+
+
 def prepare_paper_data(config_path: Path, output: Path, manifest: Path) -> int:
     config = load_parameters(config_path)
     output = output.resolve()
@@ -174,15 +184,23 @@ def prepare_paper_data(config_path: Path, output: Path, manifest: Path) -> int:
                 object_id = source["object_id"]
                 directory = staging / object_id
                 (directory / "views").mkdir(parents=True)
-                mesh, transform = normalized_mesh(
-                    load_source_mesh(source_mesh(source, config["source"]), config["source"]), config["normalization_extent"]
+                source_geometry = load_source_mesh(
+                    source_mesh(source, config["source"]), config["source"]
                 )
+                axis_transform = source_to_z_up(config.get("source_up_axis", "Z"))
+                source_geometry.apply_transform(axis_transform)
+                mesh, normalization = normalized_mesh(
+                    source_geometry, config["normalization_extent"]
+                )
+                transform = normalization @ axis_transform
                 mesh.export(directory / "reference.glb")
                 views = []
                 foreground_areas = []
                 for index in range(config["render_views"]):
                     pose = camera_pose(index * 360 / config["render_views"], config["elevation_degrees"], config["camera_distance"])
-                    image = renderer.render(mesh, pose, config["yfov_degrees"])
+                    image = renderer.render(
+                        mesh, pose, config["yfov_degrees"], mode=config.get("render_mode", "pbr")
+                    )
                     filename = f"views/{index:03d}.png"
                     image.save(directory / filename)
                     foreground_areas.append(int(np.count_nonzero(np.asarray(image)[:, :, 3])))
@@ -193,12 +211,16 @@ def prepare_paper_data(config_path: Path, output: Path, manifest: Path) -> int:
                     "source_to_reference": transform.tolist(), "views": views,
                     "conditioning_view": conditioning,
                     "conditioning_rule": config.get("conditioning_view", "first"),
+                    "source_up_axis": config.get("source_up_axis", "Z"),
+                    "reference_up_axis": "Z",
+                    "render_mode": config.get("render_mode", "pbr"),
                     "foreground_pixels": foreground_areas,
                 })
                 final = output / object_id
                 records.append({
                     "sample_id": object_id, "object_id": object_id, "view_id": f"{conditioning:03d}",
                     "split": "paper_public", "dataset": config["source"],
+                    "data_protocol": config["name"],
                     "image": str(final / views[conditioning]["image"]),
                     "reference_mesh": str(final / "reference.glb"),
                     "render_metadata": str(final / "render.json"),
@@ -212,4 +234,3 @@ def prepare_paper_data(config_path: Path, output: Path, manifest: Path) -> int:
         renderer.close()
     export_manifest(records, manifest)
     return len(records)
-

@@ -1,5 +1,7 @@
 name: sf3d_omni_public24
 source: omniobject3d
+source_up_axis: Y
+render_mode: texture
 archives:
   - name: bed
   - name: bumbag

@@ -64,6 +64,70 @@ def surface_metrics(
     return result
 
 
+def distance_summary(predicted: np.ndarray, reference: np.ndarray) -> dict[str, float]:
+    """Directional Euclidean distance quantiles; HD95 is their larger 95th percentile."""
+    accuracy, completeness = distances(predicted, reference)
+    result = {}
+    for name, values in (("accuracy", accuracy), ("completeness", completeness)):
+        for quantile in (50, 95):
+            result[f"{name}_p{quantile}"] = float(np.percentile(values, quantile))
+    result["hausdorff95"] = max(result["accuracy_p95"], result["completeness_p95"])
+    return result
+
+
+def bounded_symmetric_icp(
+    source: np.ndarray,
+    target: np.ndarray,
+    initial: np.ndarray,
+    scale_bounds: tuple[float, float] = (0.9, 1.1),
+    iterations: int = 20,
+    tolerance: float = 1e-6,
+) -> tuple[np.ndarray, dict[str, float]]:
+    """Refine a rigid pose with bounded total scale and monotonic symmetric CD.
+
+    Bounds apply to the total scale relative to ``initial``, including all iterations.
+    The original rigid pose remains a candidate; an inferior symmetric fit is rejected.
+    """
+    low, high = scale_bounds
+    if not 0 < low <= 1 <= high:
+        raise ValueError("Scale bounds must be positive and contain 1")
+    if not np.allclose(initial[:3, :3].T @ initial[:3, :3], np.eye(3), atol=1e-7):
+        raise ValueError("Initial alignment must have unit scale")
+    base = transform_points(source, initial)
+    current = base.copy()
+    relative = np.eye(4)
+    current_score = surface_metrics(current, target, [])["chamfer_l1"]
+    initial_score = current_score
+    target_tree = cKDTree(target)
+    accepted = 0
+    for _ in range(iterations):
+        forward = target_tree.query(current)[1]
+        backward = cKDTree(current).query(target)[1]
+        # Equal directional weights, even when source and target counts differ.
+        common = min(len(base), len(target))
+        a = np.linspace(0, len(base) - 1, common, dtype=int)
+        b = np.linspace(0, len(target) - 1, common, dtype=int)
+        fit_source = np.concatenate([base[a], base[backward[b]]])
+        fit_target = np.concatenate([target[forward[a]], target[b]])
+        candidate = rigid_fit(fit_source, fit_target, scale=True)
+        scale = float(np.cbrt(np.linalg.det(candidate[:3, :3])))
+        bounded = float(np.clip(scale, low, high))
+        candidate[:3, :3] *= bounded / max(scale, 1e-15)
+        candidate[:3, 3] = fit_target.mean(axis=0) - candidate[:3, :3] @ fit_source.mean(axis=0)
+        proposed = transform_points(base, candidate)
+        score = surface_metrics(proposed, target, [])["chamfer_l1"]
+        if score >= current_score - tolerance:
+            break
+        current, relative, current_score = proposed, candidate, score
+        accepted += 1
+    return relative @ initial, {
+        "scale": float(np.cbrt(np.linalg.det(relative[:3, :3]))),
+        "initial_cd": initial_score,
+        "final_cd": current_score,
+        "accepted_iterations": accepted,
+    }
+
+
 def rigid_fit(source: np.ndarray, target: np.ndarray, scale: bool = False) -> np.ndarray:
     source_center = source.mean(axis=0)
     target_center = target.mean(axis=0)

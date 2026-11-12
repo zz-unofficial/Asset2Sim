@@ -81,9 +81,9 @@ asset2sim summarize data/generated/sf3d/debug/run01 \
 
 ## 论文指标复现
 
-按 [SF3D 论文复现协议](docs/protocols/sf3d_paper_reproduction.md) 准备公开数据、运行生成，再执行 `asset2sim evaluate --run <生成目录> --config configs/evaluation/sf3d_paper_public.yaml --output <新评测目录>`。`asset2sim paper-report <评测目录> --output <新报告目录>` 导出实测与论文值的对照表。
+公开子集的模型比较使用 [SF3D 论文复现协议](docs/protocols/sf3d_paper_reproduction.md)、`data/manifests/sf3d_*_public.jsonl` 和 `configs/evaluation/sf3d_paper_public.yaml`。执行 `asset2sim evaluate --run <生成目录> --config configs/evaluation/sf3d_paper_public.yaml --output <新评测目录>`，再用 `asset2sim paper-report <评测目录> --output <新报告目录>` 汇总。
 
-几何使用归一化、旋转搜索及刚体 ICP 后的 CD 和 F-score；图像指标经尺度细化后计算 PSNR、SSIM、LPIPS。各模型复用同一数据、评测配置与渲染器。修改阈值、尺度或采样数量时另建评测配置和结果目录。论文报告值保存在 `experiments/references/`，本机实测从逐对象记录汇总；分析同时给出有效/计划对象数、数据选择规则和设备。
+几何使用归一化、旋转搜索及刚体 ICP 后的 CD、严格 F-score 和距离分位数。图像主评测固定尺度，分开报告无光照贴图 RGB 与原始 PBR 材质结果，并区分输入/新视角和轮廓 IoU；受约束尺度仅用于校准诊断。数据准备显式声明源向上轴与渲染模式。各模型复用同一数据、评测配置与渲染器。修正实现时直接维护原模块与配置，只有开展独立对照实验才增加配置。已有实验结果保留，重跑使用新 run_id；不同图像设置分别汇总。分析同时给出每项指标的有效/计划对象数、数据选择规则和设备。
 
 ## 代码、验证与交付
 

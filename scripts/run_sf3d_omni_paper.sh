@@ -24,7 +24,8 @@ GENERATED="data/generated/sf3d/paper_omni/$RUN_ID"
 EVALUATED="results/raw/sf3d_paper_omni/$RUN_ID"
 REPORT="results/metrics/sf3d_paper_public/$RUN_ID"
 LAUNCH="results/raw/sf3d_paper_omni/${RUN_ID}_launcher"
-GSO="results/raw/sf3d_paper_gso/run01"
+GSO="results/raw/sf3d_paper_gso/$RUN_ID"
+GSO_RUN="data/generated/sf3d/paper_gso/$RUN_ID"
 for target in "$GENERATED" "$EVALUATED" "$REPORT" "$LAUNCH"; do
     if [[ -e "$target" ]]; then
         printf 'Output already exists: %s. Choose a new run ID.\n' "$target" >&2
@@ -37,7 +38,7 @@ for category in bed bumbag battery book; do
         exit 1
     }
 done
-test -f "$GSO/evaluation.json"
+test -f "$GSO_RUN/run.json"
 mkdir -p "$LAUNCH"
 exec > >(tee -a "$LAUNCH/pipeline.log") 2>&1
 
@@ -55,11 +56,11 @@ trap finish EXIT
 
 printf 'prepare_data\n' > "$LAUNCH/status.txt"
 printf '[1/4] Prepare 24 OmniObject3D objects and 16 views per object\n'
-if [[ -d data/processed/sf3d_omni_public && -f data/manifests/sf3d_omni_public.jsonl ]]; then
+if [[ -f data/manifests/sf3d_omni_public.jsonl ]]; then
     printf 'Using the existing prepared OmniObject3D dataset.\n'
 else
     asset2sim prepare-paper-data --config configs/datasets/sf3d_omni_public.yaml \
-        --output data/processed/sf3d_omni_public \
+        --output data/processed/omniobject3d \
         --manifest data/manifests/sf3d_omni_public.jsonl
 fi
 
@@ -71,6 +72,10 @@ printf 'evaluate\n' > "$LAUNCH/status.txt"
 printf '\n[3/4] Measure CD, F-scores, PSNR, SSIM and LPIPS\n'
 asset2sim evaluate --run "$GENERATED" \
     --config configs/evaluation/sf3d_paper_public.yaml --output "$EVALUATED"
+if [[ ! -e "$GSO" ]]; then
+    asset2sim evaluate --run "$GSO_RUN" \
+        --config configs/evaluation/sf3d_paper_public.yaml --output "$GSO"
+fi
 
 printf 'report\n' > "$LAUNCH/status.txt"
 printf '\n[4/4] Combine GSO and OmniObject3D results and export figures\n'

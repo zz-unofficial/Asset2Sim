@@ -1,0 +1,29 @@
+{
+  "selection_rule": "ranks 1, one-third, two-thirds, last by CD",
+  "objects": [
+    {
+      "sample_id": "gso_Bifidus_Balance_FOS",
+      "cd_rank": 1,
+      "views": [
+        4,
+        12
+      ]
+    },
+    {
+      "sample_id": "gso_TEA_SET",
+      "cd_rank": 2,
+      "views": [
+        9,
+        1
+      ]
+    },
+    {
+      "sample_id": "gso_Frozen_Scrabble_Jr",
+      "cd_rank": 3,
+      "views": [
+        4,
+        12
+      ]
+    }
+  ]
+}
