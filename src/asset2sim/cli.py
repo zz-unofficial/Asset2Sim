@@ -13,6 +13,16 @@ from asset2sim.paths import PROJECT_ROOT
 def main() -> int:
     parser = argparse.ArgumentParser(prog="asset2sim")
     commands = parser.add_subparsers(dest="command", required=True)
+    physics = commands.add_parser("prepare-mesh", help="Prepare mesh geometry for physics")
+    physics.add_argument("--mesh", type=Path, required=True)
+    physics.add_argument("--kind", choices=("reference", "generated"), required=True)
+    physics.add_argument("--run", type=Path, help="Generator run directory for generated meshes")
+    physics.add_argument("--output", type=Path, required=True)
+    physics.add_argument("--target-extent", type=float, default=0.20)
+    physics.add_argument("--remove-degenerate", action="store_true")
+    physics.add_argument("--remove-unreferenced", action="store_true")
+    physics.add_argument("--merge-coincident", action="store_true")
+    physics.add_argument("--min-triangle-area", type=float, default=0.0)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -51,6 +61,20 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "prepare-mesh":
+            from asset2sim.geometry.prepare import PreparationOptions, prepare_mesh
+
+            options = PreparationOptions(
+                args.kind,
+                args.target_extent,
+                args.remove_degenerate,
+                args.remove_unreferenced,
+                args.min_triangle_area,
+                args.merge_coincident,
+            )
+            prepare_mesh(args.mesh, args.output, options, args.run)
+            print(f"Prepared physics mesh: {args.output}")
+            return 0
         if args.command == "prepare-paper-data":
             from asset2sim.data.paper import prepare_paper_data
 
