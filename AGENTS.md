@@ -31,7 +31,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 | `results/metrics/`、`results/figures/` | 本地结果表与比较图；新增结果由 Git 忽略，结论写入协议文档 |
 | `docs/protocols/`、`tests/` | 关键操作与分析；公共接口、几何和评测逻辑测试 |
 
-物理几何的输入声明与输出见 [Mesh 物理准备](docs/protocols/mesh_physics_preparation.md)；碰撞组件的输入、配置与输出见 [碰撞几何构建](docs/protocols/collision_geometry.md)，接触实验见 [MuJoCo 接触评测](docs/protocols/mujoco_contact_evaluation.md)。仿真须逐个加载导出的凸组件。物理实验使用独立的 `asset2sim-physics` Conda 环境；各模型的 GPU 依赖由自己的环境管理。
+物理几何的输入声明与输出见 [Mesh 物理准备](docs/protocols/mesh_physics_preparation.md)；碰撞组件见 [碰撞几何构建](docs/protocols/collision_geometry.md)，接触实验见 [MuJoCo 接触评测](docs/protocols/mujoco_contact_evaluation.md)，物性与动态实验见 [物理属性配置与动态仿真](docs/protocols/physical_properties_dynamics.md)。仿真须逐个加载导出的凸组件。物理实验使用独立的 `asset2sim-physics` Conda 环境；各模型的 GPU 依赖由自己的环境管理。
 
 ## 接入一个模型
 

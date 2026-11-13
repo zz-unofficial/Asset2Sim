@@ -71,6 +71,13 @@ def main() -> int:
         "--condition", choices=("C0", "C1", "C2", "C3"), action="append", required=True
     )
     oracle.add_argument("--output", type=Path, required=True)
+    dynamics = commands.add_parser(
+        "dynamics-eval", help="Evaluate dynamic physical property profiles"
+    )
+    dynamics.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/dynamics.yaml"
+    )
+    dynamics.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -109,6 +116,12 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "dynamics-eval":
+            from asset2sim.simulation.dynamics import run_dynamics
+
+            result = run_dynamics(args.config, args.output)
+            print(f"Dynamics evaluation {result['status']}: {args.output}")
+            return 0 if result["status"] == "completed" else 1
         if args.command == "physics-oracle":
             from asset2sim.simulation.oracle import run_oracle_diagnostic
 

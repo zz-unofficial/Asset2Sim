@@ -1,0 +1,59 @@
+assets:
+  reference_box:
+    batch: results/physics/task4a/reference_run01
+    sample_id: debug_box_v0
+    condition: C2
+  sf3d_box:
+    batch: results/physics/task4a/sf3d_run01
+    sample_id: debug_box_v0
+    condition: C2
+  spar3d_box:
+    batch: results/physics/task4a/spar3d_run01
+    sample_id: debug_box_v0
+    condition: C2
+profiles:
+  baseline:
+    method: aabb
+    mass_kg: 0.10
+  mesh_fixed_mass:
+    method: mesh_fixed_mass
+    mass_kg: 0.10
+  material_prior:
+    method: uniform_density
+    material: generic_wood_like_prior
+    density_kg_m3: 600.0
+physics:
+  timestep_s: 0.002
+  gravity_m_s2: [0.0, 0.0, -9.81]
+  friction: [0.5, 0.005, 0.0001]
+  contact_margin_m: 0.0
+  contact_gap_m: 0.0
+  solref: [0.02, 1.0]
+  solimp: [0.9, 0.95, 0.001, 0.5, 2.0]
+  solver: Newton
+  solver_iterations: 100
+  initial_clearance_m: 0.15
+  placement_clearance_m: 0.001
+  duration_s: 2.0
+  stability_window_s: 0.5
+  stable_linear_speed_m_s: 0.02
+  stable_angular_speed_rad_s: 0.2
+  stable_height_range_m: 0.002
+  push_radius_m: 0.015
+  push_mass_kg: 0.20
+  push_start_gap_m: 0.03
+  push_delay_s: 0.6
+  push_distance_m: 0.12
+  push_duration_s: 1.0
+  push_kp_n_m: 100.0
+  push_damping_n_s_m: 1.0
+  sample_interval_steps: 10
+  timing_repeats: 3
+video:
+  enabled: true
+  width: 480
+  height: 360
+  fps: 20
+  camera_distance_m: 0.65
+  camera_azimuth_deg: 45
+  camera_elevation_deg: -22
