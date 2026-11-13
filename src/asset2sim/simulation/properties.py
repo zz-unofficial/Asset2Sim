@@ -17,7 +17,15 @@ def estimate_properties(mesh: trimesh.Trimesh, profile: dict[str, Any]) -> dict[
     if status["status"] == "invalid" or not report["longest_extent"]:
         raise ValueError("Invalid geometry cannot define physical properties")
     method = profile["method"]
-    if method == "aabb":
+    if method == "fixed":
+        mass = float(profile["mass_kg"])
+        center = np.asarray(profile["center_of_mass_m"], dtype=float)
+        inertia = np.asarray(profile["inertia_kg_m2"], dtype=float)
+        if center.shape != (3,) or inertia.shape != (3, 3):
+            raise ValueError("Fixed COM and inertia require a 3-vector and 3x3 matrix")
+        volume = None
+        interpretation = "Explicit fixed mass, COM and inertia shared across edit conditions"
+    elif method == "aabb":
         mass = float(profile["mass_kg"])
         extents = np.asarray(mesh.extents, dtype=float)
         center = np.asarray(mesh.bounds).mean(axis=0)

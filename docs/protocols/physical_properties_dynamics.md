@@ -70,3 +70,44 @@ asset2sim dynamics-eval --config configs/physics/dynamics.yaml \
 本结果只覆盖一个物体类别、三个几何来源和三组人为假设；尚未校验真实质量、材料、尺度、摩擦、自相交、长时间稳定性或真实机器人交互。Task 4A 中生成资产相对参考的姿态仍未验证，跨来源差异不能直接解释为生成模型质量排名。
 
 自动化验证在 `asset2sim-physics` 环境执行 `python -m pytest -q tests/test_dynamics.py tests/test_physics_batch.py tests/test_physics.py tests/test_collision.py tests/test_geometry_prepare.py`，43 项通过，覆盖解析盒子物性、非水密拒绝、固定碰撞网格、落体时间、推杆接触、缺失资产记录，以及重复计时和失败计数。既有模型环境此前执行 `python -m pytest -q --ignore=tests/test_dynamics.py --ignore=tests/test_physics.py --ignore=tests/test_physics_batch.py`，59 项通过。
+
+## SPAR3D 点云局部编辑：Ring / Cup 探索
+
+官方 SPAR3D `run_image(..., pointcloud=...)` 支持输入 XYZRGB 点云；这次直接使用 Task 4A 的两个 `points.ply` 与当时保存的预处理输入图，未采用 Mesh 编辑，也未训练模型。对每个样例，保留原始点云重新生成一份 **control**，再把点云 X 坐标超过第 80 百分位的区域按平滑权重向 +X 移动，最大位移为模型坐标 0.12。两组使用相同图片、权重、随机种子 0 和生成设置；控制组用于区分点云条件重新生成本身与编辑影响。Ring、Cup 分别修改 103/512 个点；其余点坐标的最大变化均为 0。
+
+复现（使用新目录名）：
+
+```bash
+conda activate asset2sim-spar3d
+python scripts/edit_spar3d_points.py --source data/generated/spar3d/debug/physics_task4a_run01 \
+  --mode control --output data/generated/spar3d/editing/<control_run>
+python scripts/edit_spar3d_points.py --source data/generated/spar3d/debug/physics_task4a_run01 \
+  --mode edited --output data/generated/spar3d/editing/<edited_run>
+
+conda activate asset2sim-physics
+asset2sim physics-batch --manifest data/manifests/debug.jsonl \
+  --run data/generated/spar3d/editing/<control_run> --sample-id debug_ring_v0 \
+  --sample-id debug_cup_v0 --condition C0 --condition C2 --merge-coincident \
+  --remove-degenerate --remove-unreferenced --output results/physics/editing/<control_batch>
+asset2sim physics-batch --manifest data/manifests/debug.jsonl \
+  --run data/generated/spar3d/editing/<edited_run> --sample-id debug_ring_v0 \
+  --sample-id debug_cup_v0 --condition C0 --condition C2 --merge-coincident \
+  --remove-degenerate --remove-unreferenced --output results/physics/editing/<edited_batch>
+python scripts/evaluate_point_edit.py --control results/physics/editing/<control_batch> \
+  --edited results/physics/editing/<edited_batch> --output results/physics/editing/<comparison_run>
+```
+
+物理比较将编辑后的准备结果通过已记录的两次归一化矩阵转换回 **control 的物理坐标系**，避免两组各自居中和缩放掩盖或放大编辑；不使用 Ground Truth 拟合。转换后重新构建 C2，原资产及 Task A/B 结果不覆盖。编辑区域用点云阈值通过 control 的轴变换和缩放映射到物理 X 轴。以下 Mesh 距离是 control 表面向 edited 表面的单向最近**采样点**距离，每侧 20,000 点，固定种子；区域按 control 采样点划分。它衡量变化而非精准的逐点对应：对同一未编辑 Mesh 使用两组独立采样时，Ring 的编辑/非编辑区域均值约 0.97/0.96 mm，Cup 约 1.36/1.37 mm。
+
+| 样例 | 控制 → 编辑：C2 组件 | 编辑区域距离 mm（样本数） | 非编辑区域距离 mm（样本数） | 对自身输入 Mesh 的 C2 表面距离 mm |
+| --- | --- | --- | --- | --- |
+| Ring | 20 → 20 | 2.90（4471） | 2.00（15529） | 2.84 → 3.00 |
+| Cup | 37 → 36 | 4.06（4471） | 3.57（15529） | 4.37 → 3.91 |
+
+点云非编辑区域保持不代表 Mesh 非编辑区域完全不变：两个样例的非编辑区域距离均高于对应的独立采样基线，说明重建结果存在区域外变化；以上数据不足以证明变化只由局部编辑导致，也不能直接从采样距离推断碰撞误差。
+
+Ring 使用 X=0 和 X=0.07 m 的两条球探针轨迹、共 162 个位置，以各自**输入 Mesh** 的有符号距离和球半径计算参考交叠，再与 MuJoCo C2 接触比较。control 的 TP/TN/FP/FN 为 15/147/0/0，edited 为 16/146/0/0；两组均为 162/162 有效点。这是相对自身 Mesh 的有限轨迹检查，不是相对真实物体的接触准确率。Cup 两组均有多个连通分量、状态为 `needs_repair`，符号距离不作为可靠真值，接触准确率标记不可用。
+
+动态对照均使用质量 0.1 kg、质心 `(0,0,0)` m、惯性对角线 `(0.0004,0.0004,0.0004)` kg·m²，以及同一摩擦、推杆和求解器参数；这些是人为固定的控制参数，不代表真实物性。各样例/条件执行落体与推动，共 8 个试验和 8 个可解码视频，**7/8 动态试验有效**。Ring 推动两组分别位移 8.58/8.64 cm，推杆接触 499/440 步，末态均满足稳定阈值。Cup control 推动位移 7.79 cm、接触 454 步；edited 推杆接触 0 步，试验记为 `pusher_no_contact`，其 5.98 cm 位移不能解释为有效推动结果；edited 落体末态也未满足稳定阈值。初次 `comparison_run01` 在导入 MuJoCo 前未设置 EGL，渲染初始化异常退出；已修复导入顺序，记录保留。最终 `comparison_run04` 将 Cup 标为 `completed_with_failures`，退出码为 1，逐试验记录 `pusher_no_contact`；Ring 完成。
+
+实际结果位于本地 `results/physics/editing/comparison_run04/`，含变换、C2 结果、碰撞计数、八份轨迹与八个视频；结果目录被 Git 忽略。自动化命令 `python -m pytest -q tests/test_point_edit.py tests/test_dynamics.py tests/test_physics.py` 共 18 项通过，覆盖局部点保持、共享坐标、固定物性及已有动力学接口。当前仅有两个样例、两条接触轨迹和一次动态演示，尚未证明编辑因果性、材料真实性或普遍的交互一致性。
