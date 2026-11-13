@@ -39,7 +39,9 @@ asset2sim dynamics-eval --config configs/physics/dynamics.yaml \
 
 ## 实际结果：三个 box 资产
 
-最终运行 `results/physics/dynamics/debug_box_run04` 使用 Intel Core Ultra 7 265K、MuJoCo 3.3.5、trimesh 4.4.1。**27/27** 个试验有效，**27/27** 个视频可解码（各 41 帧），无 MuJoCo 警告；每组不渲染计时均有 3/3 有效重复。不同来源的碰撞组件数为 Reference 1、SF3D 4、SPAR3D 52；该数量差异来自既有资产，并非本实验修改分解参数。
+修正计时后，运行 `results/physics/dynamics/debug_box_run05` 使用 Intel Core Ultra 7 265K、MuJoCo 3.3.5、trimesh 4.4.1。**27/27** 个试验有效，**27/27** 个视频可解码（各 41 帧），无 MuJoCo 警告；每组不渲染计时均有 3/3 个实际保存的有效重复。不同来源的碰撞组件数为 Reference 1、SF3D 4、SPAR3D 52；该数量差异来自既有资产，并非本实验修改分解参数。
+
+此前 `debug_box_run04` 的计时追加位置错误：每组虽然执行 3 次重复，只保存了最后 1 次，记录中的有效/计划数为 1/1。因此旧报告中该运行的“3/3 有效重复”及其作为三次平均的耗时表不成立；`run04` 的原始记录与视频保留，以下耗时改用修复后的 `run05`。物理轨迹和推杆接触的比较不依赖该计时均值。
 
 | 来源 | baseline 质量 kg | mesh_fixed_mass 质量 kg | material_prior 质量 kg | 网格质心相对物体原点 mm |
 | --- | ---: | ---: | ---: | --- |
@@ -51,20 +53,20 @@ asset2sim dynamics-eval --config configs/physics/dynamics.yaml \
 
 | 来源 | 物性方案 | 推动后 X 位移 cm | 推杆接触步数 / 1000 | 推动末态 stable | 1000 步平均耗时 ms |
 | --- | --- | ---: | ---: | --- | ---: |
-| Reference | baseline | 8.93 | 506 / 1000 | 是 | 4.48 |
-| Reference | mesh_fixed_mass | 8.93 | 506 / 1000 | 是 | 4.47 |
-| Reference | material_prior | 1.58 | 581 / 1000 | 是 | 4.41 |
-| SF3D | baseline | 4.46 | 305 / 1000 | 否 | 5.88 |
-| SF3D | mesh_fixed_mass | 5.13 | 254 / 1000 | 是 | 6.01 |
-| SF3D | material_prior | 2.52 | 485 / 1000 | 是 | 5.89 |
-| SPAR3D | baseline | 4.82 | 262 / 1000 | 是 | 10.84 |
-| SPAR3D | mesh_fixed_mass | 4.80 | 259 / 1000 | 是 | 11.36 |
-| SPAR3D | material_prior | 3.33 | 485 / 1000 | 是 | 11.38 |
+| Reference | baseline | 8.93 | 506 / 1000 | 是 | 4.55 |
+| Reference | mesh_fixed_mass | 8.93 | 506 / 1000 | 是 | 4.46 |
+| Reference | material_prior | 1.58 | 581 / 1000 | 是 | 4.45 |
+| SF3D | baseline | 4.46 | 305 / 1000 | 否 | 5.81 |
+| SF3D | mesh_fixed_mass | 5.13 | 254 / 1000 | 是 | 5.93 |
+| SF3D | material_prior | 2.52 | 485 / 1000 | 是 | 5.87 |
+| SPAR3D | baseline | 4.82 | 262 / 1000 | 是 | 10.77 |
+| SPAR3D | mesh_fixed_mass | 4.80 | 259 / 1000 | 是 | 11.27 |
+| SPAR3D | material_prior | 3.33 | 485 / 1000 | 是 | 11.25 |
 
 全部 9/9 落体试验首次接地均约 0.176 s，与 0.15 m 理想自由落体约 0.175 s 接近；该结果验证本设置下的初始距离和重力，不验证碰撞后行为。所有 9/9 放置试验在 2 s 末满足 `stable`，但 baseline 组相对初始姿态的转角约为 Reference 0°、SF3D 22.1°、SPAR3D 75.3°；稳定并不意味着保持原朝向。SF3D baseline 推动末态未达到稳定阈值，是观察结果而不是被丢弃的失败样本。
 
-在此推杆和摩擦条件下，较大的密度先验质量对应较小的推动位移；SF3D 固定质量下改变质心和惯性也改变了动态结果。SPAR3D 的成本更高同时伴随更多凸组件和不同几何，不能仅凭本实验断定组件数是唯一原因。初次 `run01` 的推杆按初始位置布置，SPAR3D 放置后偏移导致 3 组推杆均未接触，不能计为有效推动；该记录保留。最终规则先放置后按包围盒布置推杆，`run04` 中 9/9 推动试验均发生接触。
+在此推杆和摩擦条件下，较大的密度先验质量对应较小的推动位移；SF3D 固定质量下改变质心和惯性也改变了动态结果。SPAR3D 的成本更高同时伴随更多凸组件和不同几何，不能仅凭本实验断定组件数是唯一原因。初次 `run01` 的推杆按初始位置布置，SPAR3D 放置后偏移导致 3 组推杆均未接触，不能计为有效推动；该记录保留。最终规则先放置后按包围盒布置推杆，`run05` 中 9/9 推动试验均发生接触。
 
 本结果只覆盖一个物体类别、三个几何来源和三组人为假设；尚未校验真实质量、材料、尺度、摩擦、自相交、长时间稳定性或真实机器人交互。Task 4A 中生成资产相对参考的姿态仍未验证，跨来源差异不能直接解释为生成模型质量排名。
 
-自动化验证在 `asset2sim-physics` 环境执行 `python -m pytest -q tests/test_dynamics.py tests/test_physics_batch.py tests/test_physics.py tests/test_collision.py tests/test_geometry_prepare.py`，41 项通过，覆盖解析盒子物性、非水密拒绝、固定碰撞网格、落体时间、推杆接触和缺失资产记录。既有模型环境执行 `python -m pytest -q --ignore=tests/test_dynamics.py --ignore=tests/test_physics.py --ignore=tests/test_physics_batch.py`，59 项通过。
+自动化验证在 `asset2sim-physics` 环境执行 `python -m pytest -q tests/test_dynamics.py tests/test_physics_batch.py tests/test_physics.py tests/test_collision.py tests/test_geometry_prepare.py`，43 项通过，覆盖解析盒子物性、非水密拒绝、固定碰撞网格、落体时间、推杆接触、缺失资产记录，以及重复计时和失败计数。既有模型环境此前执行 `python -m pytest -q --ignore=tests/test_dynamics.py --ignore=tests/test_physics.py --ignore=tests/test_physics_batch.py`，59 项通过。

@@ -562,18 +562,18 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
                     timing = []
                     for _ in range(config["physics"]["timing_repeats"]):
                         repeated = simulate(model, mujoco.MjData(model), config, task)
-                    timing.append(
-                        {
-                            "step_seconds": repeated["step_seconds"],
-                            "valid": repeated["valid"],
-                            "warnings": repeated["warnings"],
-                            "invalid_reason": repeated["invalid_reason"],
-                        }
-                    )
+                        timing.append(
+                            {
+                                "step_seconds": repeated["step_seconds"],
+                                "valid": repeated["valid"],
+                                "warnings": repeated["warnings"],
+                                "invalid_reason": repeated["invalid_reason"],
+                            }
+                        )
                     primary["timing_repeats"] = timing
                     valid_timing = [v["step_seconds"] for v in timing if v["valid"]]
                     primary["timing_valid"] = len(valid_timing)
-                    primary["timing_planned"] = len(timing)
+                    primary["timing_planned"] = config["physics"]["timing_repeats"]
                     primary["timing_mean_step_seconds"] = (
                         float(np.mean(valid_timing)) if valid_timing else None
                     )
@@ -582,7 +582,7 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
                         status="ok"
                         if primary["valid"]
                         and primary["video_status"] != "failed"
-                        and len(valid_timing) == len(timing)
+                        and len(valid_timing) == primary["timing_planned"]
                         else "failed",
                         scene_validation=validation,
                         video=str(video_path) if video_path else None,
@@ -590,10 +590,15 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
                     )
                     if row["status"] == "failed":
                         row["failure_stage"] = "simulation_or_video"
+                        timing_error = next(
+                            (entry["invalid_reason"] for entry in timing if not entry["valid"]),
+                            None,
+                        )
                         row["error"] = (
                             primary["video_error"]
                             or primary["invalid_reason"]
-                            or str(primary["warnings"])
+                            or (str(primary["warnings"]) if primary["warnings"] else None)
+                            or timing_error
                             or "invalid timing repeat"
                         )
                 except Exception as error:  # noqa: BLE001

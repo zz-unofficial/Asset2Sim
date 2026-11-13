@@ -90,3 +90,53 @@ def test_dynamics_ledger_retains_missing_asset_and_denominators(tmp_path):
     assert json.loads((tmp_path / "output/run.json").read_text())["planned_trials"] == 3
     with pytest.raises(FileExistsError):
         run_dynamics(path, tmp_path / "output")
+
+
+@pytest.mark.parametrize("invalid_repeat", [None, 1])
+def test_dynamics_records_each_timing_repeat(tmp_path, monkeypatch, invalid_repeat):
+    from asset2sim.simulation import dynamics
+
+    batch = tmp_path / "batch"
+    run_physics_batch(
+        Path("data/manifests/debug.jsonl"), batch, ["C0"], ["debug_box_v0"], reference=True
+    )
+    config = yaml.safe_load(Path("configs/physics/dynamics.yaml").read_text())
+    config["assets"] = {
+        "box": {"batch": str(batch), "sample_id": "debug_box_v0", "condition": "C0"}
+    }
+    config["profiles"] = {"baseline": config["profiles"]["baseline"]}
+    config["video"]["enabled"] = False
+    config["physics"]["timing_repeats"] = 3
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config))
+    calls = 0
+
+    def fake_simulate(model, data, config, task, video_path=None):
+        nonlocal calls
+        index = calls % 4
+        calls += 1
+        valid = index != invalid_repeat
+        return {
+            "samples": [{"time_s": 0.0}],
+            "valid": valid,
+            "video_status": "not_requested",
+            "video_error": None,
+            "warnings": {},
+            "invalid_reason": None if valid else "test_failure",
+            "step_seconds": float(index),
+        }
+
+    monkeypatch.setattr(dynamics, "simulate", fake_simulate)
+    result = dynamics.run_dynamics(config_path, tmp_path / "output")
+    for trial in result["trials"]:
+        assert len(trial["timing_repeats"]) == 3
+        assert [r["step_seconds"] for r in trial["timing_repeats"]] == [1, 2, 3]
+        assert trial["timing_planned"] == 3
+        if invalid_repeat is None:
+            assert trial["timing_valid"] == 3
+            assert trial["timing_mean_step_seconds"] == pytest.approx(2.0)
+            assert trial["status"] == "ok"
+        else:
+            assert trial["timing_valid"] == 2
+            assert trial["timing_mean_step_seconds"] == pytest.approx(2.5)
+            assert trial["status"] == "failed" and trial["error"] == "test_failure"
