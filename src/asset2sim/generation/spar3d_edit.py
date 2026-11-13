@@ -13,7 +13,7 @@ import trimesh
 from PIL import Image
 
 from asset2sim.generation.spar3d import SPAR3DConfig, SPAR3DGenerator
-from asset2sim.geometry.point_edit import displace_positive_x
+from asset2sim.geometry.point_edit import displace_positive_x, shrink_ring_hole
 
 
 def main():
@@ -21,6 +21,8 @@ def main():
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--mode", choices=["control", "edited"], required=True)
+    p.add_argument("--edit", choices=["x_shift", "ring_hole"], default="x_shift")
+    p.add_argument("--sample-id", action="append")
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
     generator = SPAR3DGenerator(SPAR3DConfig())
@@ -36,15 +38,22 @@ def main():
     (args.output / "run.json").write_text(json.dumps(run, indent=2) + "\n")
     failures = 0
     with (args.output / "results.jsonl").open("w") as stream:
-        for sid in ("debug_ring_v0", "debug_cup_v0"):
+        for sid in args.sample_id or ("debug_ring_v0", "debug_cup_v0"):
             row = {"sample_id": sid, "object_id": sid.rsplit("_", 1)[0], "view_id": "v0"}
             try:
                 source = args.source / sid
                 cloud = trimesh.load(source / "points.ply", process=False)
                 xyz = np.asarray(cloud.vertices).copy()
                 color = np.asarray(cloud.colors)[:, :3].astype(np.float32) / 255
-                edited_xyz, threshold = displace_positive_x(xyz)
-                displacement = edited_xyz[:, 0] - xyz[:, 0]
+                if args.edit == "ring_hole":
+                    if sid != "debug_ring_v0":
+                        raise ValueError("ring_hole edit requires debug_ring_v0")
+                    edited_xyz, edit_metadata = shrink_ring_hole(xyz)
+                    threshold = None
+                else:
+                    edited_xyz, threshold = displace_positive_x(xyz)
+                    edit_metadata = {"method": "x_shift"}
+                displacement = np.linalg.norm(edited_xyz - xyz, axis=1)
                 if args.mode == "edited":
                     xyz = edited_xyz
                 out = args.output / sid
@@ -82,7 +91,11 @@ def main():
                     if args.mode == "edited"
                     else 0,
                     roi_x_threshold=threshold,
-                    max_point_displacement=0.12 if args.mode == "edited" else 0.0,
+                    max_point_displacement=float(displacement.max())
+                    if args.mode == "edited"
+                    else 0.0,
+                    edit_method=args.edit,
+                    edit_parameters=edit_metadata,
                     elapsed_seconds=time.perf_counter() - start,
                 )
                 generator.recover()
