@@ -6,6 +6,7 @@ theme: light
 ---
 
 import Header from './components/Header.astro';
+import RobotDemo from './components/RobotDemo.astro';
 
 <Header title="Asset2Sim" authors={[]} links={[{name: 'GitHub', url: 'https://github.com/zz-unofficial/Asset2Sim', icon: 'ri:github-fill'}]} />
 
@@ -43,4 +44,6 @@ Experiments are ongoing. Tables, figures, and quantitative comparisons will be p
 
 ## Interactive Demo
 
-A browser-based MuJoCo WASM experience is planned. The [Studio](./studio/) provides an entry point for future interactive demonstrations.
+Interact with the UR5e and Reference Box directly below. The simulation loads while you browse the project.
+
+<RobotDemo />
