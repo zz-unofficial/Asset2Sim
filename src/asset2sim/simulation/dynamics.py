@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import time
+from collections import deque
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -17,6 +18,7 @@ import imageio.v2 as imageio
 import mujoco
 import numpy as np
 import yaml
+from PIL import Image, ImageDraw
 
 from asset2sim.geometry.prepare import load_geometry
 from asset2sim.paths import PROJECT_ROOT
@@ -193,7 +195,22 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
     dt = float(physics["timestep_s"])
     if not np.isfinite(dt) or dt <= 0:
         raise ValueError("Simulation timestep must be finite and positive")
-    steps = round(physics["duration_s"] / dt)
+    settle_window = float(physics.get("push_settle_window_s", 0.2))
+    settle_timeout = float(physics.get("push_settle_timeout_s", 3.0))
+    post_hold = float(physics.get("push_post_hold_s", 0.4))
+    if task == "push" and (
+        settle_window <= 0
+        or settle_timeout < physics["push_delay_s"] + settle_window
+        or post_hold < 0
+        or physics["push_duration_s"] <= 0
+    ):
+        raise ValueError("Invalid push settling or duration configuration")
+    duration = (
+        settle_timeout + physics["push_duration_s"] + post_hold
+        if task == "push"
+        else physics["duration_s"]
+    )
+    steps = round(duration / dt)
     if steps < 1 or physics["sample_interval_steps"] < 1:
         raise ValueError("Invalid simulation duration, timestep or sampling interval")
     object_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object")
@@ -213,6 +230,9 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
     initial_quat = data.qpos[qadr + 3 : qadr + 7].copy()
     first_ground, pusher_contact_steps, ground_steps = None, 0, 0
     pusher_start = None
+    push_start_time = None
+    settle_timed_out = False
+    settle_history = deque(maxlen=max(1, round(settle_window / dt)))
     push_object_position = push_object_quaternion = None
     min_contact_dist = None
     samples, step_times = [], []
@@ -239,7 +259,27 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
         for step in range(steps):
             t = step * dt
             if task == "push":
-                if t >= physics["push_delay_s"] and pusher_start is None:
+                if pusher_start is None and t >= settle_timeout:
+                    settle_timed_out = True
+                    break
+                if (
+                    push_start_time is not None
+                    and t >= push_start_time + physics["push_duration_s"] + post_hold
+                ):
+                    break
+                settled = (
+                    len(settle_history) == settle_history.maxlen
+                    and all(entry[0] for entry in settle_history)
+                    and max(entry[1] for entry in settle_history)
+                    < physics["stable_linear_speed_m_s"]
+                    and max(entry[2] for entry in settle_history)
+                    < physics["stable_angular_speed_rad_s"]
+                    and max(entry[3] for entry in settle_history)
+                    - min(entry[3] for entry in settle_history)
+                    < physics["stable_height_range_m"]
+                )
+                if t >= physics["push_delay_s"] and pusher_start is None and settled:
+                    push_start_time = t
                     mujoco.mj_forward(model, data)
                     push_object_position = data.xpos[object_id].copy()
                     push_object_quaternion = data.qpos[qadr + 3 : qadr + 7].copy()
@@ -263,7 +303,11 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
                     data.qpos[model.jnt_qposadr[pusher_joint_id]] = 0
                     data.qvel[model.jnt_dofadr[pusher_joint_id]] = 0
                     mujoco.mj_forward(model, data)
-                progress = np.clip((t - physics["push_delay_s"]) / physics["push_duration_s"], 0, 1)
+                progress = (
+                    np.clip((t - push_start_time) / physics["push_duration_s"], 0, 1)
+                    if push_start_time is not None
+                    else 0.0
+                )
                 data.ctrl[0] = physics["push_distance_m"] * progress
             begin = time.perf_counter()
             mujoco.mj_step(model, data)
@@ -287,6 +331,15 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
             pusher_contact_steps += int(pusher_contact)
             if ground_contact and first_ground is None:
                 first_ground = float(data.time)
+            if task == "push" and push_start_time is None:
+                settle_history.append(
+                    (
+                        ground_contact,
+                        float(np.linalg.norm(data.qvel[dadr : dadr + 3])),
+                        float(np.linalg.norm(data.qvel[dadr + 3 : dadr + 6])),
+                        float(data.qpos[qadr + 2]),
+                    )
+                )
             if step % int(physics["sample_interval_steps"]) == 0 or step == steps - 1:
                 position = data.qpos[qadr : qadr + 3].copy()
                 quat = data.qpos[qadr + 3 : qadr + 7].copy()
@@ -297,6 +350,15 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
                 samples.append(
                     {
                         "time_s": float(data.time),
+                        "phase": (
+                            "settling"
+                            if push_start_time is None
+                            else "pushing"
+                            if t < push_start_time + physics["push_duration_s"]
+                            else "holding"
+                        )
+                        if task == "push"
+                        else task,
                         "x_m": float(position[0]),
                         "y_m": float(position[1]),
                         "z_m": float(position[2]),
@@ -339,13 +401,39 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
                 render_started = time.perf_counter()
                 try:
                     renderer.update_scene(data, camera=camera)
-                    writer.append_data(renderer.render())
+                    frame = Image.fromarray(renderer.render())
+                    phase = (
+                        (
+                            "SETTLING"
+                            if push_start_time is None
+                            else "PUSHING"
+                            if t < push_start_time + physics["push_duration_s"]
+                            else "HOLDING"
+                        )
+                        if task == "push"
+                        else task.upper()
+                    )
+                    ImageDraw.Draw(frame).text(
+                        (10, 10),
+                        f"{phase}  {data.time:.2f}s",
+                        fill="white",
+                        stroke_width=2,
+                        stroke_fill="black",
+                    )
+                    writer.append_data(np.asarray(frame))
                 except Exception as error:  # noqa: BLE001
                     video_error = f"{type(error).__name__}: {error}"
                     writer.close()
                     writer = None
                 video_seconds += time.perf_counter() - render_started
                 next_frame += 1 / float(video["fps"])
+        if settle_timed_out and renderer is not None and writer is not None:
+            renderer.update_scene(data, camera=camera)
+            frame = Image.fromarray(renderer.render())
+            ImageDraw.Draw(frame).text(
+                (10, 10), "NOT SETTLED - NO PUSH", fill="white", stroke_width=2, stroke_fill="black"
+            )
+            writer.append_data(np.asarray(frame))
     finally:
         if writer is not None:
             writer.close()
@@ -356,9 +444,7 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
         mujoco.mjtWarning(i).name: int(w.number) for i, w in enumerate(data.warning) if w.number
     }
     final = samples[-1]
-    tail = [
-        s for s in samples if s["time_s"] >= physics["duration_s"] - physics["stability_window_s"]
-    ]
+    tail = [s for s in samples if s["time_s"] >= data.time - physics["stability_window_s"]]
     height_range = max(s["z_m"] for s in tail) - min(s["z_m"] for s in tail)
     stable = (
         final["ground_contact"]
@@ -384,20 +470,25 @@ def simulate(model, data, config: dict, task: str, video_path: Path | None = Non
     )
     return {
         "task": task,
-        "valid": not warnings and not missing_push_contact,
+        "valid": not warnings and not missing_push_contact and not settle_timed_out,
         "warnings": warnings,
-        "invalid_reason": "pusher_no_contact"
+        "invalid_reason": "settle_timeout"
+        if settle_timed_out
+        else "pusher_no_contact"
         if missing_push_contact
         else "solver_warning"
         if warnings
         else None,
         "pusher_start_m": pusher_start,
+        "push_start_time_s": push_start_time,
+        "settle_window_s": settle_window if task == "push" else None,
+        "settle_timeout_s": settle_timeout if task == "push" else None,
         "push_object_start_m": push_object_position.tolist()
         if push_object_position is not None
         else None,
         "push_displacement_x_m": push_dx,
         "push_rotation_rad": push_angle,
-        "steps": steps,
+        "steps": len(step_times),
         "simulated_seconds": float(data.time),
         "step_seconds": float(sum(step_times)),
         "step_mean_us": float(np.mean(step_times) * 1e6),
@@ -565,6 +656,7 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
                         timing.append(
                             {
                                 "step_seconds": repeated["step_seconds"],
+                                "steps": repeated.get("steps"),
                                 "valid": repeated["valid"],
                                 "warnings": repeated["warnings"],
                                 "invalid_reason": repeated["invalid_reason"],
@@ -576,6 +668,14 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
                     primary["timing_planned"] = config["physics"]["timing_repeats"]
                     primary["timing_mean_step_seconds"] = (
                         float(np.mean(valid_timing)) if valid_timing else None
+                    )
+                    per_step = [
+                        v["step_seconds"] / v["steps"] * 1e6
+                        for v in timing
+                        if v["valid"] and v["steps"]
+                    ]
+                    primary["timing_mean_per_step_us"] = (
+                        float(np.mean(per_step)) if per_step else None
                     )
                     row.update(
                         primary,
@@ -643,6 +743,7 @@ def run_dynamics(config_path: Path, output: Path) -> dict:
         "timing_valid",
         "timing_planned",
         "timing_mean_step_seconds",
+        "timing_mean_per_step_us",
         "video_status",
         "video",
         "trajectory",

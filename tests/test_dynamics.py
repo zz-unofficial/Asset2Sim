@@ -65,6 +65,21 @@ def test_dynamic_drop_push_and_configured_inertia(tmp_path):
     )
     push = simulate(push_model, push_data, config, "push")
     assert push["valid"] and push["pusher_contact_steps"] > 0
+    assert push["push_start_time_s"] >= config["physics"]["push_delay_s"]
+    assert {row["phase"] for row in push["samples"]} >= {"settling", "pushing", "holding"}
+    preceding = [
+        row
+        for row in push["samples"]
+        if push["push_start_time_s"] - 0.18 <= row["time_s"] < push["push_start_time_s"]
+    ]
+    assert preceding and all(row["ground_contact"] for row in preceding)
+    assert all(
+        row["linear_speed_m_s"] < config["physics"]["stable_linear_speed_m_s"] for row in preceding
+    )
+    assert all(
+        row["angular_speed_rad_s"] < config["physics"]["stable_angular_speed_rad_s"]
+        for row in preceding
+    )
     assert push["displacement_x_m"] > 0
     no_push = {**config, "physics": {**config["physics"], "push_distance_m": 0.0}}
     model, data, _ = make_dynamic_scene(
@@ -72,6 +87,20 @@ def test_dynamic_drop_push_and_configured_inertia(tmp_path):
     )
     trial = simulate(model, data, no_push, "push")
     assert not trial["valid"] and trial["invalid_reason"] == "pusher_no_contact"
+    never_settles = {
+        **config,
+        "physics": {
+            **config["physics"],
+            "stable_linear_speed_m_s": 0.0,
+            "push_settle_timeout_s": 0.9,
+        },
+    }
+    model, data, _ = make_dynamic_scene(
+        prepared, colliders, props, never_settles, "push", tmp_path / "unsettled"
+    )
+    trial = simulate(model, data, never_settles, "push")
+    assert not trial["valid"] and trial["invalid_reason"] == "settle_timeout"
+    assert trial["push_start_time_s"] is None and trial["pusher_contact_steps"] == 0
 
 
 def test_dynamics_ledger_retains_missing_asset_and_denominators(tmp_path):

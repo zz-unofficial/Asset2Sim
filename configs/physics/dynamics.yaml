@@ -43,6 +43,9 @@ physics:
   push_mass_kg: 0.20
   push_start_gap_m: 0.03
   push_delay_s: 0.6
+  push_settle_window_s: 0.2
+  push_settle_timeout_s: 3.0
+  push_post_hold_s: 0.4
   push_distance_m: 0.12
   push_duration_s: 1.0
   push_kp_n_m: 100.0
