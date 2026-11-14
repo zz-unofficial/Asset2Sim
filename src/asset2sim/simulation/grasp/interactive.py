@@ -148,7 +148,18 @@ def _contacts(model, data):
 
 
 def _segment(
-    name, index, model, data, viewer, renderer, scene_config, config, output, keys, blocked_key=None
+    name,
+    index,
+    model,
+    data,
+    viewer,
+    renderer,
+    scene_config,
+    config,
+    output,
+    keys,
+    blocked_key=None,
+    allow_switch=True,
 ):
     """Run a viewer segment; return a requested reset/switch or None on close."""
     directory = output / f"segment_{index:03d}_{name}"
@@ -218,6 +229,10 @@ def _segment(
     pressed = set()
     requested = None
     steps = 0
+    lifted_samples = 0
+    initial_height = float(data.qpos[qadr + 2])
+    final_table = False
+    final_forces = {"left": 0.0, "right": 0.0}
     last_reported_error = ""
     ready_reported = False
     try:
@@ -238,14 +253,17 @@ def _segment(
                         pressed = state
                         edge = pressed - previous
                         previous = pressed
-                if edge & {"0", "1", "2", "3", "q"}:
-                    requested = next(k for k in ("q", "0", "1", "2", "3") if k in edge)
+                commands = ("q", "0", "1", "2", "3") if allow_switch else ("q", "0")
+                if edge & set(commands):
+                    requested = next(k for k in commands if k in edge)
                     break
                 with viewer.lock():
                     controller.step(pressed, model.opt.timestep)
                     if not controller.homing and not ready_reported:
                         print(
-                            "Ready: W/S X, A/D Y, R/F Z; U/O X, I/P Y, H/L Z rotation; J/K grip; 0 reset; 1/2/3 switch; Q quit.",
+                            "Ready: W/S X, A/D Y, R/F Z; U/O X, I/P Y, H/L Z rotation; J/K grip; 0 reset; "
+                            + ("1/2/3 switch; " if allow_switch else "")
+                            + "Q quit.",
                             flush=True,
                         )
                         ready_reported = True
@@ -259,6 +277,12 @@ def _segment(
                         raise RuntimeError("Simulation state became non-finite")
                     if data.time >= next_sample:
                         count, table, forces = _contacts(model, data)
+                        final_table, final_forces = table, forces
+                        lifted_samples += int(
+                            not table
+                            and min(forces.values()) > 0.05
+                            and data.qpos[qadr + 2] - initial_height >= 0.03
+                        )
                         pinch_quat = np.empty(4)
                         mujoco.mju_mat2Quat(pinch_quat, data.site_xmat[site])
                         csv_writer.writerow(
@@ -310,6 +334,15 @@ def _segment(
                     "steps": steps,
                     "simulation_seconds": float(data.time),
                     "requested": requested,
+                    "grasp_observation": {
+                        "bilateral_lift_samples": lifted_samples,
+                        "sample_rate_hz": config["record_rate_hz"],
+                        "criteria": "Both pad forces >0.05N, no table contact, origin lift >=0.03m; cycle requires >=0.5s accumulated samples and final release onto table",
+                        "cycle_completed": not any(w.number for w in data.warning)
+                        and lifted_samples >= 0.5 * config["record_rate_hz"]
+                        and final_table
+                        and max(final_forces.values()) == 0,
+                    },
                     "warnings": {
                         mujoco.mjtWarning(i).name: int(w.number)
                         for i, w in enumerate(data.warning)
@@ -338,14 +371,21 @@ def select_interactive_assets(config: dict, grasp_config: dict, sample_id=None, 
     return resolved, initial
 
 
-def interactive_grasp(config_path: Path, output: Path, sample_id=None, source=None):
+def interactive_grasp(config_path: Path, output: Path, sample_id=None, source=None, asset_dir=None):
     """Launch focused-keyboard MuJoCo viewer, writing an independent session."""
     config_path = config_path.resolve()
     config = yaml.safe_load(config_path.read_text())
-    grasp_config = yaml.safe_load((config_path.parent / config["grasp_config"]).read_text())
-    grasp_config, initial_source = select_interactive_assets(
-        config, grasp_config, sample_id, source
-    )
+    imported_asset = None
+    if asset_dir is not None:
+        imported_asset = json.loads((Path(asset_dir) / "asset.json").read_text())
+        grasp_config = imported_asset["scene_config"]
+        config = imported_asset["interactive_config"]
+        initial_source = "asset"
+    else:
+        grasp_config = yaml.safe_load((config_path.parent / config["grasp_config"]).read_text())
+        grasp_config, initial_source = select_interactive_assets(
+            config, grasp_config, sample_id, source
+        )
     config["initial_source"] = initial_source
     if sample_id is not None:
         config["sample_id"] = sample_id
@@ -353,26 +393,31 @@ def interactive_grasp(config_path: Path, output: Path, sample_id=None, source=No
     output.mkdir(parents=True, exist_ok=False)
     session = {"config": config, "grasp_config": grasp_config, "segments": [], "status": "running"}
     (output / "session.json").write_text(json.dumps(session, indent=2) + "\n")
-    names = ["reference", "sf3d", "spar3d"]
+    names = ["asset"] if imported_asset else ["reference", "sf3d", "spar3d"]
     models = {}
     renderers = {}
     keys = None
     try:
         keys = ViewerKeys()
-        for name in names:
-            prepared, colliders, ledger = resolve_asset(grasp_config["assets"][name])
-            models[name], info = create_scene(
-                (PROJECT_ROOT / grasp_config["menagerie"]).resolve(),
-                prepared,
-                colliders,
-                grasp_config,
-                output / "models" / name,
-            )
-            session.setdefault("assets", {})[name] = {
-                "model": ledger["model"],
-                **grasp_config["assets"][name],
-                **info,
-            }
+        if imported_asset:
+            scene_path = Path(asset_dir).resolve() / "scene/scene.xml"
+            models["asset"] = mujoco.MjModel.from_xml_path(str(scene_path))
+            session["assets"] = {"asset": imported_asset}
+        else:
+            for name in names:
+                prepared, colliders, ledger = resolve_asset(grasp_config["assets"][name])
+                models[name], info = create_scene(
+                    (PROJECT_ROOT / grasp_config["menagerie"]).resolve(),
+                    prepared,
+                    colliders,
+                    grasp_config,
+                    output / "models" / name,
+                )
+                session.setdefault("assets", {})[name] = {
+                    "model": ledger["model"],
+                    **grasp_config["assets"][name],
+                    **info,
+                }
         for name, model in models.items():
             renderers[name] = mujoco.Renderer(
                 model, height=config["video"]["height"], width=config["video"]["width"]
@@ -402,6 +447,7 @@ def interactive_grasp(config_path: Path, output: Path, sample_id=None, source=No
                     output,
                     keys,
                     request,
+                    allow_switch=len(names) > 1,
                 )
                 session["segments"].append(
                     {"asset": current, "path": f"segment_{index:03d}_{current}", "request": request}

@@ -87,11 +87,28 @@ def main() -> int:
     interactive.add_argument(
         "--config", type=Path, default=PROJECT_ROOT / "configs/physics/grasp_interactive.yaml"
     )
+    interactive.add_argument("--asset", type=Path, help="Prepared single-asset pipeline directory")
     interactive.add_argument("--sample-id", help="Object/view sample shared across sources")
     interactive.add_argument(
         "--source", choices=("reference", "sf3d", "spar3d"), help="Initial asset source"
     )
     interactive.add_argument("--output", type=Path, required=True)
+    pipeline = commands.add_parser(
+        "asset-interactive", help="Generate or import one asset and prepare a robot scene"
+    )
+    pipeline.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/asset_interactive.yaml"
+    )
+    inputs = pipeline.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--image", type=Path)
+    inputs.add_argument("--mesh", type=Path)
+    pipeline.add_argument("--run", type=Path)
+    pipeline.add_argument("--model", choices=("sf3d", "spar3d"))
+    pipeline.add_argument("--device", choices=("cpu", "cuda"))
+    pipeline.add_argument("--up-axis", choices=("y", "z"))
+    pipeline.add_argument("--extent", type=float, help="Physical longest edge in meters")
+    pipeline.add_argument("--prepare-only", action="store_true")
+    pipeline.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -130,11 +147,36 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "asset-interactive":
+            from asset2sim.simulation.grasp.pipeline import asset_pipeline
+
+            asset_pipeline(
+                args.config,
+                args.output,
+                image=args.image,
+                mesh=args.mesh,
+                run=args.run,
+                model=args.model,
+                up_axis=args.up_axis,
+                extent=args.extent,
+                prepare_only=args.prepare_only,
+                device=args.device,
+            )
+            print(f"Asset pipeline saved: {args.output}")
+            return 0
         if args.command == "grasp-interactive":
+            if args.asset is not None and (args.source is not None or args.sample_id is not None):
+                raise ValueError(
+                    "--asset selects one prepared asset; omit --source and --sample-id"
+                )
             from asset2sim.simulation.grasp.interactive import interactive_grasp
 
             interactive_grasp(
-                args.config, args.output, sample_id=args.sample_id, source=args.source
+                args.config,
+                args.output,
+                sample_id=args.sample_id,
+                source=args.source,
+                asset_dir=args.asset,
             )
             print(f"Interactive session saved: {args.output}")
             return 0

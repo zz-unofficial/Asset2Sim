@@ -74,3 +74,51 @@ asset2sim grasp-interactive --sample-id debug_cup_v0 --source spar3d \
 已在本机 X11 Viewer 验证窗口启动、资产切换、重置及关闭保存。自动测试使用同一按键控制器驱动 Reference 盒子，观察到双指受力、离桌抬升、水平移动和释放落桌；这是自动输入验证，尚未代表用户实际手动操作的结果。当前键盘读取依赖 X11，原生 Wayland、Windows 和 macOS 尚未实现；SF3D/SPAR3D 的手动抓取效果也需实际操作验证。
 
 自动输入演示保存在 `results/physics/grasp/keyboard_validation01/`，使用与交互相同的控制器、记录和渲染流程，输入由程序模拟，未经过人工键盘操作。参考盒子在 501 个采样中有 154 个样本处于双指受力且离桌状态，物体中心最高 0.168 m；移动后松开夹爪，最终重新接触桌面，双指法向力均为零。`tests/test_grasp_interactive.py` 可重复验证对应的接触和运动条件。控制键仅在本进程的 Viewer 窗口拥有焦点时由交互入口接收，避免同时触发 Viewer 的显示及几何分组快捷键。
+
+## 从新图片或 GLB 进入交互
+
+使用 `configs/physics/asset_interactive.yaml` 配置独立模型环境、贴图分辨率、物理尺寸、清理、碰撞和物性先验。在 `asset2sim-physics` 环境中运行，一条命令完成单图推理、物理准备和 Viewer 启动：
+
+```bash
+asset2sim asset-interactive --image /path/to/object.png --model sf3d \
+  --device cpu --extent 0.10 --output results/physics/assets/my_object_01
+```
+
+`--model` 可选 `sf3d`、`spar3d`；省略 `--device` 使用模型配置的设备。模型推理由相应 Conda 环境执行，日志写入 `generation.log`。`--extent` 为物理最长边，单位米，不根据参考几何拟合。已有生成运行可以直接导入其原始 GLB：
+
+```bash
+asset2sim asset-interactive --mesh /path/to/run/sample/mesh.glb \
+  --run /path/to/run --extent 0.10 --output results/physics/assets/import_01
+```
+
+无生成记录的外部 GLB 需用 `--up-axis y` 或 `--up-axis z` 声明朝向，程序记录为外部导入，并将未知原始尺度归一化到指定米制尺寸。Y-up 导入使用绕 X 轴 +90° 的变换；有生成记录时使用生成器声明的完整坐标变换。原始 GLB 不改动。Mesh 清理的每项操作写入准备记录；非水密输入允许 CoACD 显式内部预处理，配置固定为 `preprocess_mode: on`，此行为不表示原网格完全未变。
+
+添加 `--prepare-only` 可只准备资产。之后直接打开准备好的资产，避免再次推理或分解：
+
+```bash
+asset2sim grasp-interactive --asset results/physics/assets/my_object_01 \
+  --output results/physics/assets/my_object_01/manual_01
+```
+
+单资产模式支持原有位移、旋转、夹爪、0 重置及 Q 退出。数字键来源切换只用于原有三来源模式。每段交互记录双指受力、离桌抬升采样数及释放状态；抓取周期观察条件为两侧法向力均大于 0.05 N、离桌、物体原点比初始高至少 0.03 m，累计达到 0.5 s 后最终释放到桌面，且无数值警告。它不代表持续稳定保持或跨对象成功率。
+
+输出包括 `raw/` 原图与原始 GLB、`generation/` 推理记录、`prepared/` 规范化几何与变换诊断、`collision/` 凸组件、`scene/` 可重载 MJCF 和视觉贴图、`physical_properties.json`、`asset.json`、`pipeline.json`，以及交互轨迹和视频。新运行另存解析后的 `configuration.yaml`，每阶段失败保留原因。当前物性默认使用 0.1 kg 固定质量与均匀 AABB 质心、惯量先验，并非实测物性。物体底部依据碰撞组件放到桌面上方 1 mm，检查接近位姿 IK、工作空间及 85 mm 标称开口；尺寸检查不保证任意姿态都可抓取。
+
+视觉几何从原始 GLB 独立导出，应用同一物理变换，保留节点实例、UV、颜色贴图和基础颜色，近似转换粗糙度；法线贴图、金属度贴图、发光和透明混合尚未精确复现。视觉 geom 不参与碰撞，每个 CoACD 组件独立作为碰撞 geom 加载。导出后核对视觉与物理准备网格的包围盒，清理只作用于物理几何。
+
+### 本轮真实验证
+
+输入官方示例 `third_party/stable-fast-3d/demo_files/examples/chair1.png`，实际运行命令：
+
+```bash
+asset2sim asset-interactive \
+  --image third_party/stable-fast-3d/demo_files/examples/chair1.png \
+  --model sf3d --device cpu --extent 0.10 --prepare-only \
+  --output results/physics/assets/chair_cpu_run02
+asset2sim grasp-interactive --asset results/physics/assets/chair_cpu_run02 \
+  --output results/physics/assets/chair_cpu_run02/interaction_validation
+```
+
+SF3D CPU 推理 32.24 s、512 贴图，生成 20,028 个三角面；C2 构建 12 个独立组件，夹持方向包围盒宽 52.5 mm，初始接近位姿 IK 通过。实际窗口显示了原始棕色纹理。交互验证采用自动 XTest 输入，轨迹和完整视频位于上述目录，不计为人工操作实验：有 109 个采样满足双指受力及离桌抬升条件，完成移动和释放，MuJoCo 无数值警告。椅子在等待期间发生姿态变化，随后由夹爪夹住；本轮没有自动选择稳定姿态或抓取点，观察到的周期成功不代表通用抓取能力。
+
+失败记录也保留在 `results/physics/assets/`：SF3D 的 1024/512 GPU 尝试与 SPAR3D 低显存尝试均显存不足；早期非水密椅子分解因未显式启用内部预处理而失败。修正后已有 GLB 和新图片通路均已完成。SPAR3D 从新图片到交互的完整成功案例仍未验证，本轮成功生成案例使用 SF3D CPU。

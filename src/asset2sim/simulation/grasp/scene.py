@@ -46,7 +46,16 @@ def _ns(root):
     return root
 
 
-def create_scene(menagerie: Path, prepared: Path, colliders: Path, config: dict, output: Path):
+def create_scene(
+    menagerie: Path,
+    prepared: Path,
+    colliders: Path,
+    config: dict,
+    output: Path,
+    *,
+    visual_source=None,
+    visual_transform=None,
+):
     """Build a portable MJCF with separately exported convex components."""
     arm_path = menagerie / "universal_robots_ur5e"
     grip_path = menagerie / "robotiq_2f85"
@@ -106,41 +115,69 @@ def create_scene(menagerie: Path, prepared: Path, colliders: Path, config: dict,
     )
     ET.SubElement(world, "light", pos="0 -0.5 1.5", dir="0 0 -1", diffuse=".8 .8 .8")
     x, y = config["object_xy_m"]
-    z = config["table_height_m"] - mesh.bounds[0, 2] * scale + 0.001
+    bottom = mesh.bounds[0, 2]
+    if config.get("placement_from_collision"):
+        bottom = min(
+            load_geometry(colliders / component["path"])[0].bounds[0, 2]
+            for component in record["components"]
+        )
+    z = config["table_height_m"] - bottom * scale + 0.001
     body = ET.SubElement(world, "body", name="object", pos=f"{x} {y} {z}")
     ET.SubElement(body, "freejoint", name="object_free")
     scaled = mesh.copy()
     scaled.apply_scale(scale)
-    props = estimate_properties(scaled, {"method": "aabb", "mass_kg": config["object_mass_kg"]})
+    props = estimate_properties(
+        scaled,
+        config.get("physical_profile", {"method": "aabb", "mass_kg": config["object_mass_kg"]}),
+    )
     inertia = np.array(props["inertia_kg_m2"])
     com = props["center_of_mass_m"]
+    inertia_attrs = {"diaginertia": " ".join(map(str, np.diag(inertia)))}
+    if config.get("physical_profile"):
+        inertia_attrs = {
+            "fullinertia": " ".join(
+                map(
+                    str,
+                    [
+                        inertia[0, 0],
+                        inertia[1, 1],
+                        inertia[2, 2],
+                        inertia[0, 1],
+                        inertia[0, 2],
+                        inertia[1, 2],
+                    ],
+                )
+            )
+        }
     ET.SubElement(
-        body,
-        "inertial",
-        pos=" ".join(map(str, com)),
-        mass=str(props["mass_kg"]),
-        diaginertia=" ".join(map(str, np.diag(inertia))),
+        body, "inertial", pos=" ".join(map(str, com)), mass=str(props["mass_kg"]), **inertia_attrs
     )
-    visual = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, process=False)
-    visual.export(assets / "object_visual.obj")
-    ET.SubElement(
-        arm.find("asset"),
-        "mesh",
-        name="object_visual_mesh",
-        file="object_visual.obj",
-        scale=f"{scale} {scale} {scale}",
-    )
-    ET.SubElement(
-        body,
-        "geom",
-        name="object_visual",
-        type="mesh",
-        mesh="object_visual_mesh",
-        contype="0",
-        conaffinity="0",
-        mass="0",
-        rgba=".2 .55 .85 1",
-    )
+    visual_record = None
+    if visual_source is not None:
+        from asset2sim.simulation.grasp.visual import add_visual
+
+        visual_record = add_visual(arm, body, visual_source, visual_transform, assets, scale)
+    else:
+        visual = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces, process=False)
+        visual.export(assets / "object_visual.obj")
+        ET.SubElement(
+            arm.find("asset"),
+            "mesh",
+            name="object_visual_mesh",
+            file="object_visual.obj",
+            scale=f"{scale} {scale} {scale}",
+        )
+        ET.SubElement(
+            body,
+            "geom",
+            name="object_visual",
+            type="mesh",
+            mesh="object_visual_mesh",
+            contype="0",
+            conaffinity="0",
+            mass="0",
+            rgba=".2 .55 .85 1",
+        )
     for i, component in enumerate(record["components"]):
         src = (colliders / component["path"]).resolve()
         if src.parent != colliders.resolve() or not src.is_file():
@@ -169,6 +206,7 @@ def create_scene(menagerie: Path, prepared: Path, colliders: Path, config: dict,
     model = mujoco.MjModel.from_xml_path(str(xml.resolve()))
     return model, {
         "scene": str(xml.resolve()),
+        "visual": visual_record,
         "scale": scale,
         "dimensions_m": scaled.extents.tolist(),
         "object_initial_pos_m": [x, y, z],

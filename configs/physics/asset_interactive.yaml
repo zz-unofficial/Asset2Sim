@@ -1,0 +1,17 @@
+# Paths are relative to this YAML.
+model: sf3d
+model_overrides:
+  sf3d: {texture_resolution: 512}
+  spar3d: {texture_resolution: 512}
+model_configs: {sf3d: ../models/sf3d.yaml, spar3d: ../models/spar3d.yaml}
+model_environments: {sf3d: asset2sim-sf3d, spar3d: asset2sim-spar3d}
+scene_config: grasp.yaml
+interactive_config: grasp_interactive.yaml
+target_extent_m: 0.10
+condition: C2
+collision_config: ../collision/default.yaml
+allow_open: true
+collision_preprocess: "on"
+cleaning: {remove_degenerate: true, remove_unreferenced: true, merge_coincident: false}
+physical_profile: {method: aabb, mass_kg: 0.1}
+# Imported GLBs without a run require --up-axis; units are explicitly normalized.
