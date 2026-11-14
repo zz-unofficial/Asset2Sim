@@ -201,3 +201,54 @@ def test_rotation_keys_and_angle_limits(interactive_scene, monkeypatch, key, axi
     before = controller.angles.copy()
     controller.step(set(), config["ik_period_s"])
     assert np.array_equal(controller.angles, before)
+
+
+def test_sample_and_initial_source_override():
+    from asset2sim.simulation.grasp.interactive import select_interactive_assets
+
+    grasp = yaml.safe_load(Path("configs/physics/grasp.yaml").read_text())
+    interactive = {"sample_id": "debug_box_v0", "initial_source": "reference"}
+    selected, source = select_interactive_assets(
+        interactive, grasp, sample_id="debug_cup_v0", source="spar3d"
+    )
+    assert source == "spar3d"
+    assert all(asset["sample_id"] == "debug_cup_v0" for asset in selected["assets"].values())
+    assert all(asset["sample_id"] == "debug_box_v0" for asset in grasp["assets"].values())
+    assert interactive["sample_id"] == "debug_box_v0"
+    configured, source = select_interactive_assets(
+        {"sample_id": "debug_ring_v0", "initial_source": "sf3d"}, grasp
+    )
+    assert source == "sf3d"
+    assert all(asset["sample_id"] == "debug_ring_v0" for asset in configured["assets"].values())
+    with pytest.raises(ValueError, match="Unknown initial source"):
+        select_interactive_assets({}, grasp, source="unknown")
+
+
+def test_unknown_sample_reports_batch_and_condition(tmp_path):
+    import json
+
+    from asset2sim.simulation.grasp.run import resolve_asset
+
+    (tmp_path / "batch.json").write_text(json.dumps({"results": []}))
+    asset = {"batch": str(tmp_path), "sample_id": "missing_v0", "condition": "C2"}
+    with pytest.raises(ValueError, match=r"sample_id=missing_v0, condition=C2"):
+        resolve_asset(asset)
+
+
+def test_cup_assets_load_for_all_three_sources(tmp_path):
+    from asset2sim.simulation.grasp.interactive import select_interactive_assets
+    from asset2sim.simulation.grasp.run import resolve_asset
+
+    if not Path("results/physics/task4a/reference_run01/batch.json").exists():
+        pytest.skip("Task 4A batch assets unavailable")
+    if not Path(".local/mujoco_menagerie/universal_robots_ur5e/ur5e.xml").exists():
+        pytest.skip("Menagerie assets unavailable")
+    grasp = yaml.safe_load(Path("configs/physics/grasp.yaml").read_text())
+    grasp, _ = select_interactive_assets({}, grasp, sample_id="debug_cup_v0")
+    for name in ("reference", "sf3d", "spar3d"):
+        prepared, colliders, ledger = resolve_asset(grasp["assets"][name])
+        model, info = create_scene(
+            Path(".local/mujoco_menagerie"), prepared, colliders, grasp, tmp_path / name
+        )
+        assert model.ngeom > info["component_count"]
+        assert ledger["model"].lower() == name

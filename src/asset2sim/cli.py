@@ -87,6 +87,10 @@ def main() -> int:
     interactive.add_argument(
         "--config", type=Path, default=PROJECT_ROOT / "configs/physics/grasp_interactive.yaml"
     )
+    interactive.add_argument("--sample-id", help="Object/view sample shared across sources")
+    interactive.add_argument(
+        "--source", choices=("reference", "sf3d", "spar3d"), help="Initial asset source"
+    )
     interactive.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
@@ -129,7 +133,9 @@ def main() -> int:
         if args.command == "grasp-interactive":
             from asset2sim.simulation.grasp.interactive import interactive_grasp
 
-            interactive_grasp(args.config, args.output)
+            interactive_grasp(
+                args.config, args.output, sample_id=args.sample_id, source=args.source
+            )
             print(f"Interactive session saved: {args.output}")
             return 0
         if args.command == "grasp-eval":

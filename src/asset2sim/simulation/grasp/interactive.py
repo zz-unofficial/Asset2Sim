@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import json
 import os
@@ -322,11 +323,32 @@ def _segment(
     return requested
 
 
-def interactive_grasp(config_path: Path, output: Path):
+def select_interactive_assets(config: dict, grasp_config: dict, sample_id=None, source=None):
+    """Apply a common sample and initial source without changing shared configuration."""
+    resolved = copy.deepcopy(grasp_config)
+    selected = sample_id if sample_id is not None else config.get("sample_id")
+    if selected is not None:
+        if not isinstance(selected, str) or not selected.strip():
+            raise ValueError("sample_id must be a nonempty string")
+        for name in ("reference", "sf3d", "spar3d"):
+            resolved["assets"][name]["sample_id"] = selected
+    initial = source if source is not None else config.get("initial_source", "reference")
+    if initial not in ("reference", "sf3d", "spar3d"):
+        raise ValueError(f"Unknown initial source: {initial}")
+    return resolved, initial
+
+
+def interactive_grasp(config_path: Path, output: Path, sample_id=None, source=None):
     """Launch focused-keyboard MuJoCo viewer, writing an independent session."""
     config_path = config_path.resolve()
     config = yaml.safe_load(config_path.read_text())
     grasp_config = yaml.safe_load((config_path.parent / config["grasp_config"]).read_text())
+    grasp_config, initial_source = select_interactive_assets(
+        config, grasp_config, sample_id, source
+    )
+    config["initial_source"] = initial_source
+    if sample_id is not None:
+        config["sample_id"] = sample_id
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     session = {"config": config, "grasp_config": grasp_config, "segments": [], "status": "running"}
@@ -346,12 +368,16 @@ def interactive_grasp(config_path: Path, output: Path):
                 grasp_config,
                 output / "models" / name,
             )
-            session.setdefault("assets", {})[name] = {"model": ledger["model"], **info}
+            session.setdefault("assets", {})[name] = {
+                "model": ledger["model"],
+                **grasp_config["assets"][name],
+                **info,
+            }
         for name, model in models.items():
             renderers[name] = mujoco.Renderer(
                 model, height=config["video"]["height"], width=config["video"]["width"]
             )
-        current = "reference"
+        current = initial_source
         request = None
         model = models[current]
         data = mujoco.MjData(model)

@@ -1,5 +1,7 @@
 # Shared asset, physical and geometry settings come from grasp.yaml.
 grasp_config: grasp.yaml
+sample_id: debug_box_v0
+initial_source: reference
 workspace_min_m: [0.20, -0.30, 0.045]
 workspace_max_m: [0.65, 0.30, 0.45]
 cartesian_speed_m_s: 0.06

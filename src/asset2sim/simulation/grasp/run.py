@@ -31,8 +31,14 @@ def resolve_asset(asset: dict) -> tuple[Path, Path, dict]:
         for row in ledger["results"]
         if row["sample_id"] == sid and row["condition"] == condition
     ]
-    if len(rows) != 1 or rows[0]["collision_status"] != "ok" or rows[0]["mujoco_status"] != "ok":
-        raise ValueError("Required collision asset did not pass physics batch")
+    if len(rows) != 1:
+        raise ValueError(
+            f"Expected one asset for sample_id={sid}, condition={condition} in {batch}; found {len(rows)}"
+        )
+    if rows[0]["collision_status"] != "ok" or rows[0]["mujoco_status"] != "ok":
+        raise ValueError(
+            f"Asset {sid} ({condition}) did not pass physics batch: collision={rows[0].get('collision_status')}, mujoco={rows[0].get('mujoco_status')}"
+        )
     if ledger["model"] != "Reference" and rows[0].get("index_status") != "ready":
         raise ValueError("Generated asset did not pass provenance index")
     prepared = batch / "prepared" / sid

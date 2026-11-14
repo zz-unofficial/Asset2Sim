@@ -43,6 +43,15 @@ asset2sim grasp-interactive --config configs/physics/grasp_interactive.yaml \
   --output results/physics/grasp/interactive_run01
 ```
 
+在 [交互配置](../../configs/physics/grasp_interactive.yaml) 的 `sample_id` 和 `initial_source` 中设置默认物体与初始来源；也可以从命令行临时覆盖，例如：
+
+```bash
+asset2sim grasp-interactive --sample-id debug_cup_v0 --source spar3d \
+  --output results/physics/grasp/interactive_cup_01
+```
+
+当前三个来源均有 `debug_box_v0`、`debug_cup_v0`、`debug_ring_v0`、`debug_bracket_v0` 的 C2 资产。`--sample-id` 对三个来源使用同一个样例 ID，`--source` 可选 `reference`、`sf3d`、`spar3d`；启动后仍可用数字键切换来源。命令行覆盖配置，选择和资产来源会记录在 `session.json` 中。物体在批次中缺失或对应碰撞资产不可用时，程序会说明失败的样例和条件。选择物体不改变其原始朝向；不同几何可能需要调整抓取姿态。
+
 窗口启动后，机械臂通过执行器回到物体上方，终端出现 `Ready` 后开始操作。点击 MuJoCo 窗口使其获得焦点；仅在本进程的窗口拥有焦点时读取按键，失焦后不再接收移动输入。按住移动，松开停止改变目标；可同时按多个方向键。
 
 | 按键 | 操作（世界坐标） |
