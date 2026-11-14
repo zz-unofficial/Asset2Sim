@@ -124,6 +124,9 @@ def main() -> int:
     run.add_argument("--config", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--sample-id", action="append")
+    run.add_argument(
+        "--warm-repeats", type=int, default=0, help="Warm timing repeats after one excluded warmup"
+    )
     fetch = commands.add_parser("fetch", help="Cache a registered model's assets")
     fetch.add_argument("--model", required=True)
     fetch.add_argument("--config", type=Path)
@@ -329,6 +332,7 @@ def main() -> int:
                 experiment.manifest,
                 args.output,
                 selected,
+                warm_repeats=args.warm_repeats,
                 experiment={
                     "name": experiment.name,
                     "config": str(args.config.resolve()),

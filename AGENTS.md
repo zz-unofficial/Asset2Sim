@@ -2,7 +2,7 @@
 
 ## 协作目标与文档入口
 
-Asset2Sim 当前围绕 SF3D、SPAR3D、TRELLIS.2 开展预训练推理复现与统一评测，比较资产几何、碰撞表示、交互表现和运行成本。SF3D 已接入；其余模型按相同接口补充。实验文档入口见 [docs/README.md](docs/README.md)，实验范围、数据规模和阶段安排见 `docs/protocols/reproduction_experiment_framework.md`，课程交付要求见 `课程要求.md`。
+Asset2Sim 当前围绕 SF3D、SPAR3D、TRELLIS.2 开展预训练推理复现与统一评测，比较资产几何、碰撞表示、交互表现和运行成本。SF3D 和 SPAR3D 已接入生成接口，TRELLIS.2 官方源码位于 `third_party/TRELLIS.2/`；PhysX-Bench 代码位于 `third_party/PhysX-Omni/benchmark/`。实验文档入口见 [docs/README.md](docs/README.md)，实验范围、数据规模和阶段安排见 `docs/protocols/reproduction_experiment_framework.md`，课程交付要求见 `课程要求.md`。
 
 README 由项目负责人维护。环境、实验命令和结果分析写入对应协议文档；协作结构与接口约定维护在本文件。开始修改前检查工作区，保留队友已有改动和实验输出。
 

@@ -222,6 +222,7 @@ class SPAR3DGenerator(SF3DGenerator):
             "export_seconds": export_seconds,
             "point_cloud_export_seconds": time.perf_counter() - start,
             "peak_allocated_mib": torch.cuda.max_memory_allocated() / 1024**2 if cuda else None,
+            "peak_reserved_mib": torch.cuda.max_memory_reserved() / 1024**2 if cuda else None,
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
             "point_cloud": f"{output_dir.name}/points.ply",

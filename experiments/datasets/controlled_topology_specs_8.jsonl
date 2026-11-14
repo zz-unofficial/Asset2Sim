@@ -1,0 +1,8 @@
+{"object_id":"stress_ring_small","shape":"ring","inner_radius":0.18,"outer_radius":0.5,"height":0.15,"group":"through_hole"}
+{"object_id":"stress_ring_large","shape":"ring","inner_radius":0.36,"outer_radius":0.5,"height":0.15,"group":"through_hole"}
+{"object_id":"stress_cup_thick","shape":"cup","radius":0.4,"height":0.8,"thickness":0.10,"group":"concave"}
+{"object_id":"stress_cup_thin","shape":"cup","radius":0.4,"height":0.8,"thickness":0.035,"group":"concave"}
+{"object_id":"stress_box","shape":"box","extents":[0.8,0.6,1.0],"group":"convex"}
+{"object_id":"stress_bracket","shape":"bracket","group":"slender"}
+{"object_id":"stress_open_plane","shape":"plane","group":"open_surface"}
+{"object_id":"stress_open_cylinder","shape":"open_cylinder","radius":0.4,"height":0.8,"group":"open_surface"}

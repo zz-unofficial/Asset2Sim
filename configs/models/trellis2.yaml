@@ -1,0 +1,7 @@
+model: microsoft/TRELLIS.2-4B
+pipeline_type: '512'
+seed: 0
+decimation_target: 1000000
+texture_size: 4096
+remesh: true
+extension_webp: true

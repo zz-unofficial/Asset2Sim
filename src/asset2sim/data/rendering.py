@@ -20,11 +20,13 @@ class MeshRenderer:
         self, mesh, camera_to_world: np.ndarray, yfov_degrees: float = 40, mode: str = "pbr"
     ) -> Image.Image:
         p = self.pyrender
+        import trimesh
+
         if mode not in {"pbr", "texture"}:
             raise ValueError(f"Unknown render mode: {mode}")
         scene = p.Scene(bg_color=[1, 1, 1, 0], ambient_light=[0.45] * 3)
         material = None
-        if mode == "texture" and getattr(mesh.visual, "kind", None) == "texture":
+        if mode == "texture" and getattr(getattr(mesh, "visual", None), "kind", None) == "texture":
             source = mesh.visual.material
             texture = getattr(source, "baseColorTexture", getattr(source, "image", None))
             factor = getattr(source, "baseColorFactor", getattr(source, "diffuse", None))
@@ -41,7 +43,13 @@ class MeshRenderer:
                 metallicFactor=0,
                 roughnessFactor=1,
             )
-        scene.add(p.Mesh.from_trimesh(mesh, smooth=False, material=material))
+        if isinstance(mesh, trimesh.Scene):
+            for node in mesh.graph.nodes_geometry:
+                transform, name = mesh.graph[node]
+                geometry = mesh.geometry[name]
+                scene.add(p.Mesh.from_trimesh(geometry, smooth=False), pose=transform)
+        else:
+            scene.add(p.Mesh.from_trimesh(mesh, smooth=False, material=material))
         scene.add(p.PerspectiveCamera(yfov=np.deg2rad(yfov_degrees)), pose=camera_to_world)
         scene.add(p.DirectionalLight(color=np.ones(3), intensity=2.5), pose=camera_to_world)
         flags = p.RenderFlags.RGBA | (p.RenderFlags.FLAT if mode == "texture" else 0)

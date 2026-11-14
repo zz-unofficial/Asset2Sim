@@ -1,0 +1,9 @@
+name: trellis2
+channels: [conda-forge, nodefaults]
+dependencies:
+  - python=3.10
+  - pip
+  - ninja
+  - cmake=3.31
+  - cuda-nvcc=12.4
+  - cuda-cudart-dev=12.4

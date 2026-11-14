@@ -1,8 +1,119 @@
 # SF3D 与 SPAR3D 模型复现和统一评测
 
+## 三模型单图生成基准：实验配置与运行
+
+比较 SF3D、SPAR3D、TRELLIS.2 官方预训练单图生成的几何、外观、拓扑、视角敏感性和成本。D1 使用 12 个核心 Toys4K 对象，审核合格后扩展至 24 个，按近凸、容器/凹陷、贯通孔、细支撑四组预选；其中 8 个对象增加第二输入视角。D2 使用固定的 8 个程序化拓扑样例，单独生成和汇总。D0 的 4 个开发对象验证评测器。24 个 D1 对象时，计划生成次数为 72+24+24=120；12 个 D1 对象时为 36+24+24=84。计时重复另计算力。
+
+### 服务器环境
+
+从同步后的仓库根目录执行。服务器需要 Conda、CUDA 开发工具、C/C++ 编译器和 Blender 4.2 LTS；Blender 用于统一参考/预测图像渲染，Cycles 默认使用 CPU。三个模型各用独立环境，数据准备、评测和批量调度复用 `asset2sim-sf3d`。
+
+```bash
+nvidia-smi
+nvcc --version
+blender --version
+bash scripts/setup_sf3d.sh
+bash scripts/setup_spar3d.sh
+bash scripts/setup_trellis2.sh
+conda run --no-capture-output -n asset2sim-sf3d huggingface-cli login
+```
+
+SF3D/SPAR3D 权重需在账户中开通对应模型访问。TRELLIS.2 环境定义在 `environments/trellis2/`，使用 PyTorch 2.6/CUDA 12.4，扩展安装调用固定子模块的官方脚本；已创建环境也会补装依赖。服务器优先选择 A100 80GB，pilot 记录实测显存后确定正式预算。首次安装和首次下载所用时间单独记入部署记录。
+
+### D0：渲染与指标自检
+
+```bash
+conda run -n asset2sim-sf3d python -m asset2sim.data.benchmark_synthetic --debug \
+  --output data/raw/benchmark_d0 --selection experiments/datasets/benchmark_d0.jsonl
+conda run -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
+  --selection experiments/datasets/benchmark_d0.jsonl \
+  --output data/processed/benchmark_d0 --manifest data/manifests/benchmark_d0.jsonl
+conda run --no-capture-output -n asset2sim-sf3d python -m asset2sim.evaluation.benchmark_identity \
+  --manifest data/manifests/benchmark_d0.jsonl --output results/raw/benchmark_identity/run01
+```
+
+identity 将参考 Mesh 当作预测，经同一导出、渲染和指标流程，检查 CD 的采样容差、IoU/SSIM 接近 1、LPIPS 接近 0，PSNR 上限为 120dB。`validation.json` 保存判定及分母。D0 不计入正式比较。
+
+### D1：参考审核与数据冻结
+
+通过 [Toys4K 官方入口](https://github.com/rehg-lab/lowshot-shapebias/tree/main/toys4k)申请 `.blend`，在服务器下载并存于 `data/raw/`；原始资产保留原位。候选目录可参考 [TRELLIS-500K Toys4K 元数据](https://huggingface.co/datasets/JeffreyXiang/TRELLIS-500K/blob/main/Toys4k.csv)。逐对象在 Blender 检查真实孔洞、部件、UV、基础色与材质通道，再导出：
+
+```bash
+blender -b data/raw/toys4k/<object>.blend --python scripts/export_benchmark_blend.py -- \
+  --output data/raw/benchmark_refs/<object_id>.glb
+```
+
+导出器保留可见 Mesh 及材质，关闭 Y-up 转换，与数值 Z-up 评测坐标一致。`experiments/datasets/generation_candidates.jsonl` 每行填写实际对象，例如下列字段模板；`reference_mesh` 相对该清单解析，`canonical_view` 是 0–15 的预选输入视角，第二输入相隔 180°：
+
+```json
+{"object_id":"<actual_id>","reference_mesh":"../../data/raw/benchmark_refs/<actual_id>.glb","source_up_axis":"Z","group":"through_hole","canonical_view":4,"second_view":true,"pbr_eligible":false,"material_channels":{},"source_url":"<source>","license":"<asset terms>"}
+```
+
+PBR 合格对象在 `material_channels` 声明 baseColor、metallic、roughness 的贴图或常数来源，并设置 `pbr_eligible=true`。排除依据为文件缺失/不可加载、无法有效渲染、无独立对象或与预定协议不匹配；排除记录与预测结果分别保留。分组和对象替换在查看模型预测前完成。
+
+```bash
+conda run -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
+  --selection experiments/datasets/generation_candidates.jsonl \
+  --output data/processed/generation_core --manifest data/manifests/generation_core.jsonl
+bash scripts/run_generation_benchmark.sh freeze core
+```
+
+准备模块按最长边 1.0 归一化，保留 Scene 节点变换和材质，生成 512 RGBA、16 个固定相机以及每个输入独立的条件视角记录。输入渲染沿用固定环境光和方向光。审核输出的 `audit.json` 与参考图后执行 freeze；冻结文件 `experiments/datasets/core_frozen.json` 保存清单、模型配置和评测配置快照。
+
+### Pilot、正式生成与评测
+
+```bash
+bash scripts/run_generation_benchmark.sh pilot pilot01 <id1>_v000 <id2>_v004 <id3>_v000
+bash scripts/run_generation_benchmark.sh evaluate pilot01
+bash scripts/run_generation_benchmark.sh formal core01 \
+  --freeze experiments/datasets/core_frozen.json
+bash scripts/run_generation_benchmark.sh evaluate core01
+```
+
+pilot 选 3–5 个已经审核的对象，包含孔洞和复杂结构。正式批次使用整个冻结清单；每个模型依次执行，单个模型失败后继续其余模型，并保存退出状态和日志。输出目录使用新 run_id。冻结后改变清单、模型默认配置或评测配置时，先建立新的冻结记录。
+
+每轮默认用一个共享输入进行一次预热和三次有效计时，参数为 `--warm-repeats 3`。这些输出只进入 `timing.json`；质量指标每个输入仍计一次。模型加载另计时，时间单位为秒、显存为 MiB，峰值 allocated/reserved 均保存。SPAR3D 正式服务器配置覆盖 `low_vram=false`，原有本机默认配置继续保留。主种子为 0；随机性扩展先冻结包含预选 8 对象的独立清单，再以 `--seed 1`、`--seed 2` 和新 run_id 执行，同对象种子结果在对象内部汇总。
+
+### D2：受控拓扑实验
+
+```bash
+conda run -n asset2sim-sf3d python -m asset2sim.data.benchmark_synthetic \
+  --output data/raw/benchmark_d2 --selection experiments/datasets/benchmark_d2.jsonl
+conda run -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
+  --selection experiments/datasets/benchmark_d2.jsonl \
+  --output data/processed/benchmark_d2 --manifest data/manifests/benchmark_d2.jsonl
+bash scripts/run_generation_benchmark.sh freeze topology --manifest data/manifests/benchmark_d2.jsonl
+bash scripts/run_generation_benchmark.sh formal topology01 \
+  --manifest data/manifests/benchmark_d2.jsonl --freeze experiments/datasets/topology_frozen.json
+bash scripts/run_generation_benchmark.sh evaluate topology01
+```
+
+规格在 `experiments/datasets/controlled_topology_specs_8.jsonl`，覆盖两种孔径环、两种壁厚杯、盒、支架、开放平面和无盖圆柱。环的输入视角沿孔轴方向，开放表面依据参考结构评价；D2 用来解释受控形状差异。
+
+### 评测口径与结果文件
+
+`configs/evaluation/generation_benchmark.yaml` 固定采样、旋转搜索、ICP、相机导出映射、渲染样本数与 HDRI。运行模块位于 `experiments/benchmark.py`，指标及统计位于 `evaluation/benchmark.py`，Blender worker 位于 `evaluation/benchmark_render.py`；Shell 脚本只负责进入环境与调用模块。
+
+- `export_pose`：各自归一到单位最长边，按固定模型导出矩阵和输入相机旋转评价。变换不拟合参考形状，代表约定坐标下的归一化资产表现；配置中的映射在 pilot 检查后冻结。
+- `aligned_diagnostic`：同一旋转搜索和刚体 ICP，只使用几何；尺度在归一化后固定。变换完整保存。
+- 几何：两侧按面积各采样 20,000 点，CD-L1 是双向平均欧氏距离的均值，FS 阈值为最长边 1/2/5%，HD95 是两个方向 95% 距离分位数的较大者。采样种子固定。
+- 图像：同一 Blender/Cycles 渲染器、512 RGBA、固定曝光与色彩管理。flat 模式使用基础色节点的无光照输出；PBR 使用合格参考子集和配置中的固定 HDRI。分别报告输入/新视角、全图、前景并集 PSNR、并集包围框裁剪 SSIM/LPIPS；裁剪指标名称带 `union_crop`。HDRI 相对仓库根目录解析，用户可替换配置后重新冻结。
+- 拓扑：原始及仅按位置合并的诊断分别记录顶点/面、连通分量、边界边、非流形边、水密性、绕序和 Euler 数。位置合并只作用于副本，用来识别 UV seam。genus 留空并注明未验证顶点流形。TRELLIS.2 导出前的 `native_geometry.npz` 与官方重网格 GLB 分别统计。D2 另报告投影孔洞 IoU/recall；表面 recall 仍按距离阈值解释。
+- 统计：视角先在对象内平均，再给对象等权中位数；主配对表使用该项全部计划视角有效的共同对象，报告配对数及固定种子的 2,000 次对象 bootstrap 区间。`robustness.csv` 保存同对象两个输入条件的差值。生成、几何、渲染和指标失败均有状态，参考审核排除另表保留。
+
+每轮生成保存在 `data/generated/<model>/generation_core/<run_id>/`；计划、日志和评测在 `results/raw/generation_benchmark/<run_id>/`。重点查看 `evaluation/tables.md`、`summary.json`、`per_sample.csv`、`per_object.csv`、`per_view.csv`、`paired.csv`、`failures.csv` 和 `qualitative.png`。原始 Mesh、纹理、渲染图、环境日志由 Git 忽略；正式结论归入本文。
+
+### 当前验证记录
+
+本机小型程序化及测试替身验证共 44 项通过，覆盖 Scene 加载、双轨几何、缺失来源计数、UV seam 诊断、视角嵌套、计时重复和八种受控参考。验证命令为 `python -m pytest -q tests/test_generation_formal.py tests/test_generation_benchmark.py tests/test_experiments.py tests/test_sf3d_interface.py tests/test_paper_metrics.py`，使用已有 SF3D 环境。服务器执行 D0 identity 与三模型 pilot 后记录真实渲染、显存和耗时。Toys4K 资产与许可由服务器审核；TRELLIS.2 数据工具将 Toys4K 列为测试来源，各模型预训练数据的覆盖情况随公开资料登记。课程比较采用本协议的小样本结果。
+
 使用 SF3D 与 SPAR3D 生成三维资产，在统一的 GSO 和 OmniObject3D 公开子集上比较几何、外观与运行成本。
 
 ## 实验配置与运行
+
+### 上游代码
+
+TRELLIS.2 官方代码位于 `third_party/TRELLIS.2/`。下载项目后使用 `git submodule update --init --recursive` 获取上游代码和 TRELLIS.2 的 Eigen 子模块。
 
 ### SF3D 环境与生成
 

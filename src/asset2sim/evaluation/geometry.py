@@ -11,6 +11,24 @@ from scipy.spatial import cKDTree
 from scipy.spatial.transform import Rotation
 
 
+def scene_mesh(path: Path) -> tuple[trimesh.Scene, trimesh.Trimesh]:
+    """Preserve visual scene nodes; flatten transformed triangles only for metrics."""
+    scene = trimesh.load(path, force="scene", process=False)
+    parts = []
+    for node in scene.graph.nodes_geometry:
+        transform, name = scene.graph[node]
+        part = scene.geometry[name].copy()
+        if isinstance(part, trimesh.Trimesh):
+            part.apply_transform(transform)
+            parts.append(part)
+    if not parts:
+        raise ValueError(f"No triangle surfaces: {path}")
+    mesh = trimesh.util.concatenate(parts)
+    if not len(mesh.faces) or not np.isfinite(mesh.vertices).all() or mesh.area <= 0:
+        raise ValueError(f"Invalid triangle surface: {path}")
+    return scene, mesh
+
+
 def load_mesh(path: Path) -> trimesh.Trimesh:
     mesh = trimesh.load(path, force="mesh", process=False)
     if not isinstance(mesh, trimesh.Trimesh) or not len(mesh.faces):

@@ -1,0 +1,22 @@
+name: generation_benchmark_formal
+fscore_thresholds: [0.01, 0.02, 0.05]
+surface_points: 20000
+alignment_points: 1024
+rotation_step_degrees: 30
+icp_iterations: 50
+icp_tolerance: 0.000001
+seed: 0
+image_metrics: true
+lpips_network: alex
+cpu_threads: 8
+minimum_render_views: 16
+blender: blender
+render_samples: 32
+# Used only for references marked pbr_eligible in the frozen manifest.
+hdri: third_party/TRELLIS.2/assets/hdri/forest.exr
+# Fixed coordinate declarations; no per-object fitting in the export_pose track.
+# SF3D/SPAR3D: inverse official GLB export rotation to the model's Z-up frame.
+export_to_canonical:
+  sf3d: [[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+  spar3d: [[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+  trellis2: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]

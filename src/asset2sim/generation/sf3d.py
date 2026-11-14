@@ -248,6 +248,7 @@ class SF3DGenerator:
             "inference_seconds": inference_seconds,
             "export_seconds": time.perf_counter() - export_start,
             "peak_allocated_mib": torch.cuda.max_memory_allocated() / 1024**2 if use_cuda else None,
+            "peak_reserved_mib": torch.cuda.max_memory_reserved() / 1024**2 if use_cuda else None,
             "vertices": len(mesh.vertices),
             "faces": len(mesh.faces),
         }

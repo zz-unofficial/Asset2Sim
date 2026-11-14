@@ -9,7 +9,11 @@ from typing import Any
 
 from asset2sim.generation.base import Generator
 
-MODELS = {"sf3d": "asset2sim.generation.sf3d", "spar3d": "asset2sim.generation.spar3d"}
+MODELS = {
+    "sf3d": "asset2sim.generation.sf3d",
+    "spar3d": "asset2sim.generation.spar3d",
+    "trellis2": "asset2sim.generation.trellis2",
+}
 
 
 def _module(name: str) -> ModuleType:

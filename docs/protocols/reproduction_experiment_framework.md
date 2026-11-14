@@ -49,7 +49,7 @@ SF3D 的论文表 1 / 表 A1 复现采用独立的 [论文评测协议](model_re
 | 集合 | 规模 | 用途 |
 | --- | --- | --- |
 | 开发集 | 四类各 1 个对象，每对象 2 视角；已准备 8 张参考渲染图 | 接口、坐标、碰撞和任务调试 |
-| 正式参考集 | 四类各 6 个，共 24 对象，每对象 2 视角 | 主定量比较 |
+| 正式参考集 | 四类各 3 个，共 12 个核心对象；审核后可扩展至 24 个 | 主定量比较 |
 | 真实照片补充集 | 可选 4–6 张 | 分析实际背景处理与生成失败案例 |
 
 四类为近似凸形、明显凹陷/容器、贯通孔/把手、细长/复杂支撑结构。对象按主要结构归类并记录附加标签。参考资产从 GSO、OmniObject3D 的许可明确子集选取，必要时补充具有明确接触真值的程序化实体；扫描与程序化样本分别统计。
@@ -65,8 +65,8 @@ SF3D 的论文表 1 / 表 A1 复现采用独立的 [论文评测协议](model_re
 | 编号 | 实验内容 | 设置与主要输出 |
 | --- | --- | --- |
 | E0 | 官方推理与开发闭环 | 官方样例、4 个开发对象；完成环境、生成与导出记录 |
-| E1 | 三模型资产质量 | 24 对象×2 视角×3 模型，共 144 份主生成输出 |
-| E2 | 固定碰撞表示 | 每份生成 Mesh 对比 4 种碰撞条件，最多 576 组碰撞输出 |
+| E1 | 三模型资产质量 | 12 个核心对象×1 输入视角×3 模型，共 36 次主生成；扩展至 24 对象后为 72 次；预选 8 对象补第二输入视角 |
+| E2 | 固定碰撞表示 | 对已有生成 Mesh 比较 4 种碰撞条件；独立于单图生成基准统计 |
 | E3 | 仿真任务 | 相同物性与初态，比较模型×碰撞条件的稳定性、接触和成本 |
 | E4 | 场景/参数分析 | 按形状、视角和随机性分析；预算允许时补充 TRELLIS.2 分辨率分析 |
 
@@ -155,5 +155,6 @@ FP 表示应无接触却判为接触，分母为真负例位置数；FN 表示�
 - [SF3D 代码](https://github.com/Stability-AI/stable-fast-3d)与[论文](https://arxiv.org/abs/2408.00653)
 - [SPAR3D 代码](https://github.com/Stability-AI/stable-point-aware-3d)与[论文](https://arxiv.org/abs/2501.04689)
 - [TRELLIS.2 代码](https://github.com/microsoft/TRELLIS.2)与[论文](https://arxiv.org/abs/2512.14692)
+- [PhysX-Omni / PhysX-Bench](https://github.com/physx-omni/PhysX-Omni)：源码位于 `third_party/PhysX-Omni/`，基准代码和使用说明位于 `benchmark/`
 - [CoACD 代码与参数说明](https://github.com/SarahWeiii/CoACD)
 - [GSO](https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/)与[OmniObject3D](https://omniobject3d.github.io/)

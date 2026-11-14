@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import sys
 import time
 from datetime import datetime, timezone
@@ -21,9 +22,12 @@ def run_generation(
     output: Path,
     sample_ids: list[str] | None = None,
     experiment: dict[str, Any] | None = None,
+    warm_repeats: int = 0,
 ) -> int:
     """Save run metadata and per-input results; return the failed sample count."""
     records = select_samples(load_manifest(manifest), sample_ids)
+    if warm_repeats < 0:
+        raise ValueError("warm_repeats must be nonnegative")
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     run = {
@@ -38,6 +42,9 @@ def run_generation(
         "samples": [record["sample_id"] for record in records],
         "git_commit": git_revision(PROJECT_ROOT),
         "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "cpu": platform.processor(),
+        "warm_repeats": warm_repeats,
     }
     write_json(output / "run.json", run)
     with (output / "inputs.jsonl").open("x", encoding="utf-8") as stream:
@@ -56,6 +63,29 @@ def run_generation(
     write_json(output / "run.json", run)
     failures = 0
     try:
+        if warm_repeats:
+            timing_dir = output / "timing"
+            timing_dir.mkdir()
+            timing = []
+            # Warmup is explicit and excluded from both quality and timing statistics.
+            for repeat in range(warm_repeats + 1):
+                result = {
+                    "repeat": repeat,
+                    "warmup": repeat == 0,
+                    "sample_id": records[0]["sample_id"],
+                }
+                try:
+                    result.update(
+                        generator.generate(
+                            Path(records[0]["image"]), timing_dir / f"repeat_{repeat:03d}"
+                        )
+                    )
+                    result["status"] = "ok"
+                except Exception as error:  # noqa: BLE001 - retain failed timing attempts
+                    result.update(status="failed", error=f"{type(error).__name__}: {error}")
+                    generator.recover()
+                timing.append(result)
+                write_json(output / "timing.json", timing)
         with (output / "results.jsonl").open("x", encoding="utf-8") as stream:
             for record in records:
                 sample_id = record["sample_id"]
