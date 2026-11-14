@@ -1,0 +1,46 @@
+---
+title: Asset2Sim
+description: From generated 3D assets to physics and robotic interaction.
+favicon: favicon.svg
+theme: light
+---
+
+import Header from './components/Header.astro';
+
+<Header title="Asset2Sim" authors={[]} links={[{name: 'GitHub', url: 'https://github.com/zz-unofficial/Asset2Sim', icon: 'ri:github-fill'}]} />
+
+<nav aria-label="Project sections" className="not-prose flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm">
+  <a href="#overview">Overview</a><a href="#method">Method</a><a href="#3d-generation">3D Generation</a><a href="#physics-adaptation">Physics Adaptation</a><a href="#physical-simulation">Physical Simulation</a><a href="#robotic-manipulation">Robotic Manipulation</a><a href="#results">Results</a><a href="#interactive-demo">Interactive Demo</a>
+</nav>
+
+## Overview
+
+Asset2Sim investigates a shared pipeline from image-conditioned 3D generation to physics-ready assets and simulated interaction. The project compares geometry, collision representations, interaction behavior, and computational cost.
+
+## Method
+
+The workflow connects 3D generation, geometric preparation, collision construction, physical simulation, and robotic manipulation. Models and experiments share input manifests and evaluation settings to support consistent comparisons.
+
+## 3D Generation
+
+SF3D and SPAR3D are integrated into the generation interface, with TRELLIS.2 under reproduction. Generated meshes and their associated runtime measurements will be presented here.
+
+## Physics Adaptation
+
+Generated geometry is prepared for simulation with explicit coordinate transforms and collision representations, including convex hulls and CoACD components. Visual comparisons and geometry reports will be added as experiments proceed.
+
+## Physical Simulation
+
+Controlled MuJoCo contact and dynamics experiments evaluate the behavior of prepared assets. Experimental setup, media, and measurements will be added here.
+
+## Robotic Manipulation
+
+Robotic grasping and interaction experiments extend the evaluation to downstream tasks. Examples and results will be added here.
+
+## Results
+
+Experiments are ongoing. Tables, figures, and quantitative comparisons will be published here when available.
+
+## Interactive Demo
+
+A browser-based MuJoCo WASM experience is planned. The [Studio](./studio/) provides an entry point for future interactive demonstrations.
