@@ -2,7 +2,7 @@
 
 ## 三模型单图生成基准：实验配置与运行
 
-比较 SF3D、SPAR3D、TRELLIS.2 官方预训练单图生成的几何、外观、拓扑、视角敏感性和成本。D1 使用 12 个核心 Toys4K 对象，审核合格后扩展至 24 个，按近凸、容器/凹陷、贯通孔、细支撑四组预选；其中 8 个对象增加第二输入视角。D2 使用固定的 8 个程序化拓扑样例，单独生成和汇总。D0 的 4 个开发对象验证评测器。24 个 D1 对象时，计划生成次数为 72+24+24=120；12 个 D1 对象时为 36+24+24=84。计时重复另计算力。
+比较 SF3D、SPAR3D、TRELLIS.2 官方预训练单图生成的几何、外观、拓扑、视角敏感性和成本。D1 使用 GSO 的 32 个对象，其中 8 个增加第二输入视角，共 40 个单图输入、120 次三模型生成。D1-PBR 使用 ABO 的 6 个原始 GLB，增加 18 次生成。两套真实数据分别统计，共 138 次正式生成；D2 的 8 个程序化拓扑/PBR 参考为独立补充，再增加 24 次。预热及计时重复另计。D0 的 4 个开发对象用于验证评测器。
 
 ### 服务器环境
 
@@ -34,45 +34,75 @@ conda run --no-capture-output -n asset2sim-sf3d python -m asset2sim.evaluation.b
 
 identity 将参考 Mesh 当作预测，经同一导出、渲染和指标流程，检查 CD 的采样容差、IoU/SSIM 接近 1、LPIPS 接近 0，PSNR 上限为 120dB。`validation.json` 保存判定及分母。D0 不计入正式比较。
 
-### D1：参考审核与数据冻结
+### D1：GSO 32 对象数据准备
 
-通过 [Toys4K 官方入口](https://github.com/rehg-lab/lowshot-shapebias/tree/main/toys4k)申请 `.blend`，在服务器下载并存于 `data/raw/`；原始资产保留原位。候选目录可参考 [TRELLIS-500K Toys4K 元数据](https://huggingface.co/datasets/JeffreyXiang/TRELLIS-500K/blob/main/Toys4k.csv)。逐对象在 Blender 检查真实孔洞、部件、UV、基础色与材质通道，再导出：
+[GSO 官方介绍](https://research.google/blog/scanned-objects-by-google-research-a-dataset-of-3d-scanned-common-household-items/)提供带纹理的真实物体扫描，采用 CC BY 4.0。对象、选择理由、输入条件和官方单对象 ZIP 链接固定在 `experiments/datasets/generation_gso32.jsonl`。32 个 v1 下载链接已通过四字节范围请求确认可获取，总计约 194.88MiB。
 
-```bash
-blender -b data/raw/toys4k/<object>.blend --python scripts/export_benchmark_blend.py -- \
-  --output data/raw/benchmark_refs/<object_id>.glb
-```
+| 分组 | 四个代表对象 | 观察重点 |
+| --- | --- | --- |
+| 包装与瓶罐 | Frozen 盒、Weston 瓶、Bifidus 包装、Crayola 盒 | 规则几何、标签与正反面纹理 |
+| 容器 | 蓝色马克杯、深碗、烤盅、白色水壶 | 口沿、内壁、把手与壶嘴 |
+| 厨具与花盆 | 煎锅、Bundt 模具、方盘、花盆 | 浅薄表面、环形凹腔与长柄 |
+| 工具 | C 形夹、剪刀、锤子、螺丝刀 | 细杆、凹口、开口与非对称形体 |
+| 家电与电子产品 | 手电筒、鼠标、键盘、咖啡机 | 轴对称体、密集按键与复合结构 |
+| 鞋与软质物品 | 船鞋、背包、毛巾、靴子 | 鞋口、背带、褶皱与织物纹理 |
+| 开口与薄结构 | 提篮、三格收纳篮、文件架、锅铲 | 隔板、狭缝、薄片与长柄 |
+| 玩具 | 人偶、三角龙、蜜蜂、火车 | 多部件、遮挡、四肢和重复结构 |
 
-导出器保留可见 Mesh 及材质，关闭 Y-up 转换，与数值 Z-up 评测坐标一致。`experiments/datasets/generation_candidates.jsonl` 每行填写实际对象，例如下列字段模板；`reference_mesh` 相对该清单解析，`canonical_view` 是 0–15 的预选输入视角，第二输入相隔 180°：
+杯、夹具、剪刀、鞋、水壶、Bundt 模具、文件架和人偶预选第二输入视角。主输入仍按参考轮廓面积最大规则选择，同面积时取最小编号；第二输入相隔 180°。输入选择只使用参考渲染。
 
-```json
-{"object_id":"<actual_id>","reference_mesh":"../../data/raw/benchmark_refs/<actual_id>.glb","source_up_axis":"Z","group":"through_hole","canonical_view":4,"second_view":true,"pbr_eligible":false,"material_channels":{},"source_url":"<source>","license":"<asset terms>"}
-```
-
-PBR 合格对象在 `material_channels` 声明 baseColor、metallic、roughness 的贴图或常数来源，并设置 `pbr_eligible=true`。排除依据为文件缺失/不可加载、无法有效渲染、无独立对象或与预定协议不匹配；排除记录与预测结果分别保留。分组和对象替换在查看模型预测前完成。
-
-```bash
-conda run -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
-  --selection experiments/datasets/generation_candidates.jsonl \
-  --output data/processed/generation_core --manifest data/manifests/generation_core.jsonl
-bash scripts/run_generation_benchmark.sh freeze core
-```
-
-准备模块按最长边 1.0 归一化，保留 Scene 节点变换和材质，生成 512 RGBA、16 个固定相机以及每个输入独立的条件视角记录。输入渲染沿用固定环境光和方向光。审核输出的 `audit.json` 与参考图后执行 freeze；冻结文件 `experiments/datasets/core_frozen.json` 保存清单、模型配置和评测配置快照。
-
-### Pilot、正式生成与评测
+服务器从仓库根目录执行，自动下载或复用 `data/raw/gso/` 缓存，恢复 OBJ/MTL/PNG，归一化并生成 16 个视角：
 
 ```bash
-bash scripts/run_generation_benchmark.sh pilot pilot01 <id1>_v000 <id2>_v004 <id3>_v000
-bash scripts/run_generation_benchmark.sh evaluate pilot01
-bash scripts/run_generation_benchmark.sh formal core01 \
-  --freeze experiments/datasets/core_frozen.json
-bash scripts/run_generation_benchmark.sh evaluate core01
+conda run --no-capture-output -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
+  --output data/processed/gso32 --manifest data/manifests/generation_gso32.jsonl
 ```
 
-pilot 选 3–5 个已经审核的对象，包含孔洞和复杂结构。正式批次使用整个冻结清单；每个模型依次执行，单个模型失败后继续其余模型，并保存退出状态和日志。输出目录使用新 run_id。冻结后改变清单、模型默认配置或评测配置时，先建立新的冻结记录。
+查看 `data/processed/gso32/reference_gallery.png` 与 `audit.json`，核对 32 个参考、40 个输入及结构可见性。源扫描的具体孔洞和薄壁状态由几何报告及参考图确认。随后冻结、试跑和正式生成：
 
-每轮默认用一个共享输入进行一次预热和三次有效计时，参数为 `--warm-repeats 3`。这些输出只进入 `timing.json`；质量指标每个输入仍计一次。模型加载另计时，时间单位为秒、显存为 MiB，峰值 allocated/reserved 均保存。SPAR3D 正式服务器配置覆盖 `low_vram=false`，原有本机默认配置继续保留。主种子为 0；随机性扩展先冻结包含预选 8 对象的独立清单，再以 `--seed 1`、`--seed 2` 和新 run_id 执行，同对象种子结果在对象内部汇总。
+```bash
+bash scripts/run_generation_benchmark.sh freeze gso32
+bash scripts/run_generation_benchmark.sh pilot gso32_pilot01
+bash scripts/run_generation_benchmark.sh evaluate gso32_pilot01
+bash scripts/run_generation_benchmark.sh formal gso32_run01 \
+  --freeze experiments/datasets/gso32_frozen.json
+bash scripts/run_generation_benchmark.sh evaluate gso32_run01
+```
+
+pilot 默认用盒、杯、剪刀各一个输入；末尾可指定 sample_id。新输出使用独立 run_id。下载、纹理、几何和渲染异常写入 `audit.json`，参考失败另表保留。已有八对象实验与缓存保留原位。GSO 基础色作为主外观结果，PBR 资格为 false。
+
+### D1-PBR：ABO 六对象补充集
+
+使用 [ABO 官方发布](https://amazon-berkeley-objects.s3.amazonaws.com/index.html)的原始 GLB，保留原始高分辨率 PBR 贴图。`ABO-GLB` 浏览器派生包采用 WebP 和 meshopt 压缩；本协议通过官方 S3 按文件下载原件，沿用现有 Trimesh/Blender 接口。许可为 CC BY 4.0，数据署名为 Amazon.com。
+
+选择清单为 `experiments/datasets/generation_abo6.jsonl`，共约 119.01MiB。六个文件的官方模型路径、GLB JSON 材质块及基础色/金属粗糙度纹理引用已经核验；完整网格和贴图值由服务器准备过程读取。
+
+| ID | ABO model ID | 对象与材质先验 | 比较价值 |
+| --- | --- | --- | --- |
+| `abo_plastic` | `B000S6N026` | 黑色碎纸机，塑料外壳 | 低纹理表面与反射响应 |
+| `abo_wood` | `B003DQ5B2U` | 松木套桌 | 木纹与多平面结构 |
+| `abo_leather` | `B00IFHPVEU` | 皮革办公椅 | 软包与皮革表面 |
+| `abo_fabric` | `B016ID34BO` | 织物办公椅 | 细纹理及粗糙表面 |
+| `abo_metal` | `B072Y2MRY2` | 铬色支撑凳 | 金属与坐垫的混合材质 |
+| `abo_ceramic` | `B075HR4ZDB` | 几何纹理陶瓷花瓶 | 曲面与粗糙度变化 |
+
+材质组名来自商品描述，作为先验标签。GLB metallic-roughness 通道与参数另行记录。源资产为 Y-up，准备阶段显式转为 Z-up，再将最长边归一到 1。原始 GLB 保存在 `data/raw/abo/`，保持原样。天然正面 +Z 转换后对应参考视角 12；每个对象只生成一个输入。ABO 输入和 PBR 评测使用同一个 Blender/Cycles worker、固定 HDRI 和曝光；源材质缺少必需贴图时记录准备失败。
+
+```bash
+conda run --no-capture-output -n asset2sim-sf3d python -m asset2sim.data.generation_benchmark \
+  --selection experiments/datasets/generation_abo6.jsonl \
+  --output data/processed/abo6 --manifest data/manifests/generation_abo6.jsonl
+bash scripts/run_generation_benchmark.sh freeze abo6 --manifest data/manifests/generation_abo6.jsonl
+bash scripts/run_generation_benchmark.sh pilot abo6_pilot01 --manifest data/manifests/generation_abo6.jsonl
+bash scripts/run_generation_benchmark.sh evaluate abo6_pilot01
+bash scripts/run_generation_benchmark.sh formal abo6_run01 \
+  --manifest data/manifests/generation_abo6.jsonl --freeze experiments/datasets/abo6_frozen.json
+bash scripts/run_generation_benchmark.sh evaluate abo6_run01
+```
+
+ABO pilot 默认选木桌、金属凳和陶瓷瓶。准备前确认 Blender 与配置中的 HDRI 可用，使用 `--render-config` 可指定同类渲染配置。GSO32 与 ABO6 的图表和有效分母分别报告；ABO 同时展示 flat 与 PBR 多视图指标，结合几何误差解释材质重渲染差异。ABO 属于 TRELLIS.2 数据工具列出的公开训练来源之一，这组结果用于指定资产上的重建与材质表现分析。
+
+每个数据集默认用一个共享输入执行一次预热和三次有效计时，参数为 `--warm-repeats 3`。这些输出只进入计时表，质量每个输入计一次。时间单位为秒、显存为 MiB，记录 allocated/reserved。SPAR3D 服务器覆盖 `low_vram=false`。主种子为 0；随机性扩展先冻结独立对象子集，再用新 run_id 和种子 1/2 执行。
 
 ### D2：受控拓扑实验
 
@@ -88,7 +118,7 @@ bash scripts/run_generation_benchmark.sh formal topology01 \
 bash scripts/run_generation_benchmark.sh evaluate topology01
 ```
 
-规格在 `experiments/datasets/controlled_topology_specs_8.jsonl`，覆盖两种孔径环、两种壁厚杯、盒、支架、开放平面和无盖圆柱。环的输入视角沿孔轴方向，开放表面依据参考结构评价；D2 用来解释受控形状差异。
+规格在 `experiments/datasets/controlled_topology_specs_8.jsonl`，采用提供的 P01–P08：曲面开放片、三孔板、杆件框架、空心杯、嵌套壳、薄鳍、波纹布条及窄缝块。程序化实现使用 Trimesh/Shapely，并记录实际生成方式；基础色、金属度及粗糙度采用确定性纹理。三孔板与窄缝块采用高仰角输入，布条使用双面材质。嵌套壳的内部表面封闭不可见，元数据单独标记隐藏结构。D2 用来解释受控形状差异。
 
 ### 评测口径与结果文件
 
@@ -101,11 +131,11 @@ bash scripts/run_generation_benchmark.sh evaluate topology01
 - 拓扑：原始及仅按位置合并的诊断分别记录顶点/面、连通分量、边界边、非流形边、水密性、绕序和 Euler 数。位置合并只作用于副本，用来识别 UV seam。genus 留空并注明未验证顶点流形。TRELLIS.2 导出前的 `native_geometry.npz` 与官方重网格 GLB 分别统计。D2 另报告投影孔洞 IoU/recall；表面 recall 仍按距离阈值解释。
 - 统计：视角先在对象内平均，再给对象等权中位数；主配对表使用该项全部计划视角有效的共同对象，报告配对数及固定种子的 2,000 次对象 bootstrap 区间。`robustness.csv` 保存同对象两个输入条件的差值。生成、几何、渲染和指标失败均有状态，参考审核排除另表保留。
 
-每轮生成保存在 `data/generated/<model>/generation_core/<run_id>/`；计划、日志和评测在 `results/raw/generation_benchmark/<run_id>/`。重点查看 `evaluation/tables.md`、`summary.json`、`per_sample.csv`、`per_object.csv`、`per_view.csv`、`paired.csv`、`failures.csv` 和 `qualitative.png`。原始 Mesh、纹理、渲染图、环境日志由 Git 忽略；正式结论归入本文。
+每轮生成保存在 `data/generated/<model>/generation_core/<run_id>/`；计划、日志和评测在 `results/raw/generation_benchmark/<run_id>/`。重点查看 `evaluation/tables.md`、`summary.json`、`per_sample.csv`、`per_object.csv`、`per_view.csv`、`paired.csv`、`groups.csv`、`failures.csv` 和 `qualitative.png`。原始 Mesh、纹理、渲染图、环境日志由 Git 忽略；正式结论归入本文。
 
 ### 当前验证记录
 
-本机小型程序化及测试替身验证共 44 项通过，覆盖 Scene 加载、双轨几何、缺失来源计数、UV seam 诊断、视角嵌套、计时重复和八种受控参考。验证命令为 `python -m pytest -q tests/test_generation_formal.py tests/test_generation_benchmark.py tests/test_experiments.py tests/test_sf3d_interface.py tests/test_paper_metrics.py`，使用已有 SF3D 环境。服务器执行 D0 identity 与三模型 pilot 后记录真实渲染、显存和耗时。Toys4K 资产与许可由服务器审核；TRELLIS.2 数据工具将 Toys4K 列为测试来源，各模型预训练数据的覆盖情况随公开资料登记。课程比较采用本协议的小样本结果。
+本机小型程序化及测试替身验证共 49 项通过，覆盖 Scene 加载、双轨几何、缺失来源计数、UV seam 诊断、视角嵌套、计时重复和八种受控参考。验证命令为 `python -m pytest -q tests/test_generation_formal.py tests/test_generation_benchmark.py tests/test_experiments.py tests/test_sf3d_interface.py tests/test_paper_metrics.py`，使用已有 SF3D 环境。服务器执行 D0 identity 与三模型 pilot 后记录真实渲染、显存和耗时。GSO32 和 ABO6 在查看三模型结果前固定，公开预训练数据的覆盖情况随来源登记；结果按固定子集比较解释。课程比较采用本协议的小样本结果。
 
 使用 SF3D 与 SPAR3D 生成三维资产，在统一的 GSO 和 OmniObject3D 公开子集上比较几何、外观与运行成本。
 

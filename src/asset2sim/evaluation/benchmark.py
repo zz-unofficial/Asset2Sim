@@ -105,6 +105,8 @@ def aggregate(rows: list[dict]) -> tuple[list[dict], list[dict]]:
             "model": model,
             "object_id": object_id,
             "track": track,
+            "dataset": samples[0].get("dataset") or "custom",
+            "category": samples[0].get("category") or "unlabeled",
             "n_planned_views": len(samples),
             "n_geometry_valid": sum(row.get("geometry_status") == "ok" for row in samples),
             "n_image_valid": sum(row.get("image_status") == "ok" for row in samples),
@@ -146,6 +148,8 @@ def aggregate(rows: list[dict]) -> tuple[list[dict], list[dict]]:
                 "texture_novel_lpips",
                 "texture_novel_mask_iou",
                 "pbr_novel_lpips",
+                "pbr_novel_psnr",
+                "pbr_novel_ssim",
             ):
                 values = [
                     left[obj][metric] - right[obj][metric]
@@ -566,6 +570,8 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
         "texture_novel_lpips",
         "texture_novel_mask_iou",
         "pbr_novel_lpips",
+        "pbr_novel_psnr",
+        "pbr_novel_ssim",
     )
     medians = []
     for model in runs:
@@ -594,6 +600,42 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                     }
                 )
     write_csv(output / "medians.csv", medians)
+    group_medians = []
+    for model, track, dataset, category in sorted(
+        {(r["model"], r["track"], r["dataset"], r["category"]) for r in objects}
+    ):
+        selected = [
+            r
+            for r in objects
+            if (r["model"], r["track"], r["dataset"], r["category"])
+            == (model, track, dataset, category)
+        ]
+        for metric_name in main_metrics:
+            eligible_ids = {
+                s["object_id"]
+                for s in samples
+                if not metric_name.startswith("pbr_") or s.get("pbr_eligible", False)
+            }
+            eligible = [r for r in selected if r["object_id"] in eligible_ids]
+            valid = [
+                r[metric_name]
+                for r in eligible
+                if r.get(metric_name) is not None
+                and r.get(f"{metric_name}_n") == r["n_planned_views"]
+            ]
+            group_medians.append(
+                {
+                    "model": model,
+                    "track": track,
+                    "dataset": dataset,
+                    "category": category,
+                    "metric": metric_name,
+                    "median": float(np.median(valid)) if valid else None,
+                    "n_valid_objects": len(valid),
+                    "n_planned_objects": len(eligible),
+                }
+            )
+    write_csv(output / "groups.csv", group_medians)
     write_json(
         output / "summary.json",
         {
@@ -601,6 +643,9 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
             "planned_objects": len({s["object_id"] for s in samples}),
             "rows": len(rows),
             "failed_rows": len(failures),
+            "reference_candidates": len(audits),
+            "reference_eligible": sum(r.get("status") == "eligible" for r in audits),
+            "reference_excluded": sum(r.get("status") == "excluded" for r in audits),
             "paired": paired,
             "medians": medians,
         },

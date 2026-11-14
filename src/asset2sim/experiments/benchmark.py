@@ -21,7 +21,7 @@ def main() -> None:
     parser.add_argument("run_id")
     parser.add_argument("samples", nargs="*")
     parser.add_argument(
-        "--manifest", type=Path, default=Path("data/manifests/generation_core.jsonl")
+        "--manifest", type=Path, default=Path("data/manifests/generation_gso32.jsonl")
     )
     parser.add_argument(
         "--config", type=Path, default=Path("configs/evaluation/generation_benchmark.yaml")
@@ -89,8 +89,6 @@ def main() -> None:
             raise ValueError("Evaluation configuration differs from the recorded run plan")
         evaluate(base / "inputs.jsonl", runs, base / "evaluation", args.config)
         return
-    if args.mode == "pilot" and not args.samples:
-        parser.error("pilot needs explicit sample IDs")
     if args.mode == "formal":
         if args.samples:
             parser.error("formal uses the entire frozen manifest; freeze a subset for seed repeats")
@@ -111,6 +109,13 @@ def main() -> None:
     if base.exists() or any(path.exists() for path in runs.values()):
         raise FileExistsError("Use a new run_id; existing outputs are preserved")
     records = select_samples(load_manifest(args.manifest), args.samples or None)
+    if args.mode == "pilot" and not args.samples:
+        nominated = [record for record in records if record.get("pilot")]
+        pool = nominated or records
+        selected = {}
+        for record in pool:
+            selected.setdefault(record["object_id"], record)
+        records = list(selected.values())[:3]
     for record in records:
         for field in ("reference_mesh", "render_metadata"):
             if not Path(record.get(field, "")).is_file():

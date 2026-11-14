@@ -7,12 +7,75 @@ from pathlib import Path
 
 import numpy as np
 import trimesh
+from PIL import Image
+from shapely.geometry import Point, Polygon
 
 from asset2sim.artifacts import read_jsonl
 from asset2sim.data.synthetic import reference_meshes
 
 
 def create_shape(spec: dict) -> trimesh.Trimesh:
+    if "shape_name" in spec:
+        shape = spec["shape_name"]
+        if shape in {"open_sheet", "fabric_strip"}:
+            x, y = np.meshgrid(
+                np.linspace(-0.5, 0.5, 41),
+                np.linspace(
+                    -0.35 if shape == "open_sheet" else -0.15,
+                    0.35 if shape == "open_sheet" else 0.15,
+                    17,
+                ),
+            )
+            z = 0.18 * x**2 if shape == "open_sheet" else 0.07 * np.sin(4 * np.pi * x)
+            vertices = np.column_stack([x.ravel(), y.ravel(), z.ravel()])
+            faces = []
+            for j in range(16):
+                for i in range(40):
+                    a = j * 41 + i
+                    faces.extend([[a, a + 1, a + 42], [a, a + 42, a + 41]])
+            return trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+        if shape == "perforated_plate":
+            boundary = Polygon([[-0.5, -0.25], [0.5, -0.25], [0.5, 0.25], [-0.5, 0.25]])
+            for x in [-0.3, 0, 0.3]:
+                boundary = boundary.difference(Point(x, 0).buffer(0.09, quad_segs=32))
+            return trimesh.creation.extrude_polygon(boundary, height=0.06, engine="earcut")
+        if shape == "slotted_block":
+            outer = [[-0.5, -0.3], [0.5, -0.3], [0.5, 0.3], [-0.5, 0.3]]
+            hole = [[-0.36, -0.025], [0.36, -0.025], [0.36, 0.025], [-0.36, 0.025]]
+            return trimesh.creation.extrude_polygon(
+                Polygon(outer, holes=[hole]), height=0.3, engine="earcut"
+            )
+        if shape == "wire_frame":
+            vertices = np.array(
+                [[x, y, z] for x in [-0.4, 0.4] for y in [-0.4, 0.4] for z in [-0.4, 0.4]]
+            )
+            rods = [
+                trimesh.creation.cylinder(radius=0.025, segment=[a, b], sections=16)
+                for i, a in enumerate(vertices)
+                for b in vertices[i + 1 :]
+                if np.count_nonzero(a != b) == 1
+            ]
+            return trimesh.util.concatenate(rods)
+        if shape == "hollow_cup":
+            return create_shape({"shape": "cup", "radius": 0.4, "height": 0.8, "thickness": 0.05})
+        if shape == "nested_shell":
+            outer = trimesh.creation.icosphere(subdivisions=3, radius=0.5)
+            inner = trimesh.creation.icosphere(subdivisions=3, radius=0.25)
+            inner.invert()
+            return trimesh.util.concatenate([outer, inner])
+        if shape == "thin_fins":
+            parts = [trimesh.creation.box(extents=[0.25, 0.25, 0.7])]
+            for axis in [0, 1]:
+                for sign in [-1, 1]:
+                    size = [0.008, 0.008, 0.5]
+                    size[axis] = 0.4
+                    fin = trimesh.creation.box(extents=size)
+                    offset = np.zeros(3)
+                    offset[axis] = sign * 0.3
+                    fin.apply_translation(offset)
+                    parts.append(fin)
+            return trimesh.util.concatenate(parts)
+        raise ValueError(f"Unknown declared topology specification: {shape}")
     shape = spec["shape"]
     if shape == "ring":
         mesh = trimesh.creation.annulus(
@@ -61,11 +124,32 @@ def prepare(specs: Path, output: Path, selection: Path, debug: bool = False) -> 
         else read_jsonl(specs)
     )
     for spec in definitions:
-        name = spec["object_id"]
+        name = spec.get("object_id") or f"{spec['candidate_id']}_{spec['shape_name']}"
         if Path(name).name != name or name in {".", ".."}:
             raise ValueError("Unsafe synthetic object ID")
         mesh = debug_meshes[name][1] if debug else create_shape(spec)
-        mesh.visual.vertex_colors = [160, 180, 210, 255]
+        # Deterministic PBR channels make the supplied synthetic material prior explicit.
+        yy, xx = np.indices((64, 64))
+        checker = ((xx // 8 + yy // 8) % 2).astype(np.uint8)
+        color = np.stack([80 + 80 * checker, 130 + 50 * checker, 190 - 50 * checker], axis=-1)
+        metallic = 30 + 170 * checker
+        roughness = 70 + 130 * (1 - checker)
+        maps = output / f"{name}_materials"
+        maps.mkdir()
+        Image.fromarray(color).save(maps / "basecolor.png")
+        Image.fromarray(metallic).save(maps / "metallic.png")
+        Image.fromarray(roughness).save(maps / "roughness.png")
+        packed = np.stack([np.full_like(metallic, 255), roughness, metallic], axis=-1)
+        spans = np.maximum(mesh.extents, 1e-9)
+        uv = (mesh.vertices[:, :2] - mesh.bounds[0, :2]) / spans[:2]
+        material = trimesh.visual.material.PBRMaterial(
+            baseColorTexture=Image.fromarray(color),
+            metallicRoughnessTexture=Image.fromarray(packed),
+            metallicFactor=1,
+            roughnessFactor=1,
+            doubleSided=spec.get("shape_name") == "fabric_strip",
+        )
+        mesh.visual = trimesh.visual.TextureVisuals(uv=uv, material=material)
         path = output / f"{name}.glb"
         mesh.export(path)
         rows.append(
@@ -73,14 +157,27 @@ def prepare(specs: Path, output: Path, selection: Path, debug: bool = False) -> 
                 "object_id": name,
                 "reference_mesh": os.path.relpath(path.resolve(), selection.resolve().parent),
                 "source_up_axis": "Z",
-                "group": spec["group"],
+                "group": spec.get("group", spec.get("structural_target")),
                 "dataset": "debug" if debug else "controlled_topology",
                 "second_view": False,
-                "pbr_eligible": False,
+                "pbr_eligible": not debug,
+                "material_channels": {
+                    "baseColor": "deterministic checker texture",
+                    "metallic": "deterministic checker texture",
+                    "roughness": "deterministic checker texture",
+                },
                 "license": "CC0-1.0",
                 "source_url": "procedural specification",
                 "specification": spec,
-                "canonical_view": 4 if spec["shape"] == "ring" else 0,
+                "canonical_view": 4 if spec.get("shape") == "ring" else 0,
+                "candidate_id": spec.get("candidate_id"),
+                "reference_generator": "trimesh analytic surfaces and polygon extrusion",
+                "target_visibility": "fully enclosed internal surface"
+                if spec.get("shape_name") == "nested_shell"
+                else "inspect reference renders before freezing",
+                "elevation_degrees": 75.0
+                if spec.get("shape_name") in {"perforated_plate", "slotted_block"}
+                else 20.0,
             }
         )
     selection.write_text("".join(json.dumps(row) + "\n" for row in rows))
