@@ -1,0 +1,27 @@
+menagerie: .local/mujoco_menagerie
+menagerie_revision: 370c43965323c0944b433b202aac5058b5f907a9
+assets:
+  reference:
+    batch: results/physics/task4a/reference_run01
+    sample_id: debug_box_v0
+    condition: C2
+  sf3d:
+    batch: results/physics/task4a/sf3d_run01
+    sample_id: debug_box_v0
+    condition: C2
+  spar3d:
+    batch: results/physics/task4a/spar3d_run01
+    sample_id: debug_box_v0
+    condition: C2
+object_scale: 0.5
+object_mass_kg: 0.1
+object_friction: [1.0, 0.005, 0.0001]
+table_height_m: 0.0
+object_xy_m: [0.45, 0.0]
+timestep_s: 0.002
+lift_height_m: 0.12
+success_height_m: 0.06
+minimum_hold_fraction: 0.8
+minimum_normal_force_n: 0.05
+trials_per_asset: 3
+video: {width: 640, height: 480, fps: 20}

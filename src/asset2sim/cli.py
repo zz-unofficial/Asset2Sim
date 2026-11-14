@@ -78,6 +78,9 @@ def main() -> int:
         "--config", type=Path, default=PROJECT_ROOT / "configs/physics/dynamics.yaml"
     )
     dynamics.add_argument("--output", type=Path, required=True)
+    grasp = commands.add_parser("grasp-eval", help="Run scripted MuJoCo grasp trials")
+    grasp.add_argument("--config", type=Path, default=PROJECT_ROOT / "configs/physics/grasp.yaml")
+    grasp.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -116,6 +119,12 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "grasp-eval":
+            from asset2sim.simulation.grasp.run import evaluate_grasps
+
+            result = evaluate_grasps(args.config, args.output)
+            print(f"Grasp evaluation {result['status']}: {args.output}")
+            return 0 if result["status"] == "completed" else 1
         if args.command == "dynamics-eval":
             from asset2sim.simulation.dynamics import run_dynamics
 
