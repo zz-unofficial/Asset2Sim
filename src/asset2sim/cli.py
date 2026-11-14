@@ -81,6 +81,13 @@ def main() -> int:
     grasp = commands.add_parser("grasp-eval", help="Run scripted MuJoCo grasp trials")
     grasp.add_argument("--config", type=Path, default=PROJECT_ROOT / "configs/physics/grasp.yaml")
     grasp.add_argument("--output", type=Path, required=True)
+    interactive = commands.add_parser(
+        "grasp-interactive", help="Control a grasp scene with the keyboard"
+    )
+    interactive.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/grasp_interactive.yaml"
+    )
+    interactive.add_argument("--output", type=Path, required=True)
     paper_data = commands.add_parser("prepare-paper-data", help="Prepare public paper datasets")
     paper_data.add_argument("--config", type=Path, required=True)
     paper_data.add_argument("--output", type=Path, required=True)
@@ -119,6 +126,12 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "grasp-interactive":
+            from asset2sim.simulation.grasp.interactive import interactive_grasp
+
+            interactive_grasp(args.config, args.output)
+            print(f"Interactive session saved: {args.output}")
+            return 0
         if args.command == "grasp-eval":
             from asset2sim.simulation.grasp.run import evaluate_grasps
 

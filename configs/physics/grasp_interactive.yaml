@@ -1,0 +1,12 @@
+# Shared asset, physical and geometry settings come from grasp.yaml.
+grasp_config: grasp.yaml
+workspace_min_m: [0.20, -0.30, 0.045]
+workspace_max_m: [0.65, 0.30, 0.45]
+cartesian_speed_m_s: 0.06
+angular_speed_rad_s: 0.4
+rotation_limit_rad: 1.2
+joint_speed_rad_s: 0.65
+gripper_speed_units_s: 160.0
+ik_period_s: 0.05
+record_rate_hz: 20
+video: {width: 640, height: 480, fps: 15}

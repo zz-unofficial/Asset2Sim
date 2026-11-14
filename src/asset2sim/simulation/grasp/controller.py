@@ -53,13 +53,13 @@ def score_grasp(trace, initial_height, config, warnings):
     }
 
 
-def inverse_kinematics(model, target, initial):
-    """Solve a fixed downward pinch pose; never use object geometry for fitting."""
+def inverse_kinematics(model, target, initial, orientation=None):
+    """Solve a pinch position and orientation without object geometry fitting."""
     data = mujoco.MjData(model)
     site = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grip_pinch")
     if site < 0:
         raise ValueError("Gripper pinch site missing")
-    desired = np.diag([1.0, -1.0, -1.0])
+    desired = np.diag([1.0, -1.0, -1.0]) if orientation is None else np.asarray(orientation)
 
     def residual(q):
         data.qpos[:6] = q

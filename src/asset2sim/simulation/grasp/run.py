@@ -20,6 +20,29 @@ from asset2sim.simulation.grasp.controller import scripted_trial
 from asset2sim.simulation.grasp.scene import create_scene
 
 
+def resolve_asset(asset: dict) -> tuple[Path, Path, dict]:
+    """Validate the existing batch and return prepared geometry, colliders and provenance."""
+    batch = (PROJECT_ROOT / asset["batch"]).resolve()
+    sid = asset["sample_id"]
+    condition = asset["condition"]
+    ledger = json.loads((batch / "batch.json").read_text())
+    rows = [
+        row
+        for row in ledger["results"]
+        if row["sample_id"] == sid and row["condition"] == condition
+    ]
+    if len(rows) != 1 or rows[0]["collision_status"] != "ok" or rows[0]["mujoco_status"] != "ok":
+        raise ValueError("Required collision asset did not pass physics batch")
+    if ledger["model"] != "Reference" and rows[0].get("index_status") != "ready":
+        raise ValueError("Generated asset did not pass provenance index")
+    prepared = batch / "prepared" / sid
+    colliders = batch / "collisions" / sid / condition
+    record = json.loads((colliders / "colliders.json").read_text())
+    if Path(record["input"]).resolve() != (prepared / "normalized.glb").resolve():
+        raise ValueError("Collider does not belong to prepared mesh")
+    return prepared, colliders, ledger
+
+
 def evaluate_grasps(config_path: Path, output: Path) -> dict:
     """Run all planned trials, retaining load failures in the denominator."""
     config = yaml.safe_load(Path(config_path).read_text())
@@ -54,25 +77,7 @@ def evaluate_grasps(config_path: Path, output: Path) -> dict:
         sid = asset["sample_id"]
         condition = asset["condition"]
         try:
-            ledger = json.loads((batch / "batch.json").read_text())
-            rows = [
-                row
-                for row in ledger["results"]
-                if row["sample_id"] == sid and row["condition"] == condition
-            ]
-            if (
-                len(rows) != 1
-                or rows[0]["collision_status"] != "ok"
-                or rows[0]["mujoco_status"] != "ok"
-            ):
-                raise ValueError("Required collision asset did not pass physics batch")
-            if ledger["model"] != "Reference" and rows[0].get("index_status") != "ready":
-                raise ValueError("Generated asset did not pass provenance index")
-            prepared = batch / "prepared" / sid
-            colliders = batch / "collisions" / sid / condition
-            record = json.loads((colliders / "colliders.json").read_text())
-            if Path(record["input"]).resolve() != (prepared / "normalized.glb").resolve():
-                raise ValueError("Collider does not belong to prepared mesh")
+            prepared, colliders, ledger = resolve_asset(asset)
             model, scene = create_scene(
                 menagerie, prepared, colliders, config, output / name / "model"
             )
