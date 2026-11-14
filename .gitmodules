@@ -4,3 +4,9 @@
 [submodule "third_party/stable-point-aware-3d"]
 	path = third_party/stable-point-aware-3d
 	url = https://github.com/Stability-AI/stable-point-aware-3d.git
+[submodule "third_party/TRELLIS.2"]
+	path = third_party/TRELLIS.2
+	url = https://github.com/microsoft/TRELLIS.2.git
+[submodule "third_party/PhysX-Omni"]
+	path = third_party/PhysX-Omni
+	url = https://github.com/physx-omni/PhysX-Omni.git
