@@ -2,7 +2,7 @@
 
 ## 协作目标与文档入口
 
-Asset2Sim 当前围绕 SF3D、SPAR3D、TRELLIS.2 开展预训练推理复现与统一评测，比较资产几何、碰撞表示、交互表现和运行成本。SF3D 已接入；其余模型按相同接口补充。实验范围、数据规模和阶段安排见 `docs/protocols/reproduction_experiment_framework.md`，课程交付要求见 `课程要求.md`。
+Asset2Sim 当前围绕 SF3D、SPAR3D、TRELLIS.2 开展预训练推理复现与统一评测，比较资产几何、碰撞表示、交互表现和运行成本。SF3D 已接入；其余模型按相同接口补充。实验文档入口见 [docs/README.md](docs/README.md)，实验范围、数据规模和阶段安排见 `docs/protocols/reproduction_experiment_framework.md`，课程交付要求见 `课程要求.md`。
 
 README 由项目负责人维护。环境、实验命令和结果分析写入对应协议文档；协作结构与接口约定维护在本文件。开始修改前检查工作区，保留队友已有改动和实验输出。
 
@@ -31,7 +31,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 | `results/metrics/`、`results/figures/` | 本地结果表与比较图；新增结果由 Git 忽略，结论写入协议文档 |
 | `docs/protocols/`、`tests/` | 关键操作与分析；公共接口、几何和评测逻辑测试 |
 
-物理几何的输入声明与输出见 [Mesh 物理准备](docs/protocols/mesh_physics_preparation.md)；碰撞组件见 [碰撞几何构建](docs/protocols/collision_geometry.md)，接触实验见 [MuJoCo 接触评测](docs/protocols/mujoco_contact_evaluation.md)，物性与动态实验见 [物理属性配置与动态仿真](docs/protocols/physical_properties_dynamics.md)。仿真须逐个加载导出的凸组件。物理实验使用独立的 `asset2sim-physics` Conda 环境；各模型的 GPU 依赖由自己的环境管理。
+物理几何的输入声明与输出见 [Mesh 物理准备与碰撞几何](docs/protocols/mesh_physics_preparation.md)，接触实验见 [MuJoCo 接触评测](docs/protocols/mujoco_contact_evaluation.md)，物性与动态实验见 [物理属性与动态仿真](docs/protocols/physical_properties_dynamics.md)，局部编辑见 [点云编辑与物理交互](docs/protocols/point_cloud_editing.md)，机械臂实验见 [抓取与交互仿真](docs/protocols/robot_grasp.md)。仿真须逐个加载导出的凸组件。物理实验使用独立的 `asset2sim-physics` Conda 环境；各模型的 GPU 依赖由自己的环境管理。
 
 ## 接入一个模型
 
@@ -39,7 +39,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 2. 新建 `environments/<model>/` 和 `scripts/setup_<model>.sh`，提供独立 Conda 环境，并在其中以 editable 方式安装本项目。
 3. 实现 `generation/<model>.py`，遵循 `generation/base.py` 的 `Generator` 协议，提供 `create_generator(parameters)` 与 `fetch_assets(parameters)`；在 `generation/registry.py` 注册模型名和模块路径。
 4. 新建模型配置，再复制已有实验配置，复用同一数据清单和样例 ID。只在 `overrides` 中填写本次变化的参数。
-5. 用一个已有输入验证加载、生成、GLB 读取与结果汇总，再运行完整清单。将操作和观察写入 `docs/protocols/<model>_preparation.md`。
+5. 用一个已有输入验证加载、生成、GLB 读取与结果汇总，再运行完整清单。将操作和观察写入 `docs/protocols/model_reproduction.md`。
 
 适配器负责 `load()`、`generate(image_path, output_dir)`、`metadata()` 与 `recover()`，`parameters` 返回解析后的参数字典。`generate()` 创建样例目录，保存实际输入 `input.png` 与原始 `mesh.glb`，返回 `vertices`、`faces`、`preprocess_seconds`、`inference_seconds`、`export_seconds`、`peak_allocated_mib`；其他测量可增加字段。`metadata()` 记录权重版本、软件/设备、原始坐标轴与单位。公共运行器负责清单选择、批量调度和记录，新增模型沿用这套逻辑。
 
@@ -84,7 +84,7 @@ asset2sim summarize data/generated/sf3d/debug/run01 \
 
 ## 论文指标复现
 
-公开子集的模型比较使用 [SF3D 论文复现协议](docs/protocols/sf3d_paper_reproduction.md)、`data/manifests/sf3d_*_public.jsonl` 和 `configs/evaluation/sf3d_paper_public.yaml`。执行 `asset2sim evaluate --run <生成目录> --config configs/evaluation/sf3d_paper_public.yaml --output <新评测目录>`，再用 `asset2sim paper-report <评测目录> --output <新报告目录>` 汇总。
+公开子集的模型比较使用 [模型复现与统一评测](docs/protocols/model_reproduction.md)、`data/manifests/sf3d_*_public.jsonl` 和 `configs/evaluation/sf3d_paper_public.yaml`。执行 `asset2sim evaluate --run <生成目录> --config configs/evaluation/sf3d_paper_public.yaml --output <新评测目录>`，再用 `asset2sim paper-report <评测目录> --output <新报告目录>` 汇总。
 
 几何使用归一化、旋转搜索及刚体 ICP 后的 CD、严格 F-score 和距离分位数。图像主评测固定尺度，分开报告无光照贴图 RGB 与原始 PBR 材质结果，并区分输入/新视角和轮廓 IoU；受约束尺度仅用于校准诊断。数据准备显式声明源向上轴与渲染模式。各模型复用同一数据、评测配置与渲染器。修正实现时直接维护原模块与配置，只有开展独立对照实验才增加配置。已有实验结果保留，重跑使用新 run_id；不同图像设置分别汇总。分析同时给出每项指标的有效/计划对象数、数据选择规则和设备。
 

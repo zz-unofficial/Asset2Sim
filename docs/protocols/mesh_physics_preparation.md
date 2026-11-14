@@ -1,4 +1,8 @@
-# Mesh 物理准备
+# Mesh 物理准备与碰撞几何
+
+## 实验配置与运行
+
+### Mesh 物理准备
 
 `asset2sim prepare-mesh` 将 GLB、OBJ、STL 转为物理几何，输出到新目录。GLB 场景按所有节点实例展开，完整应用节点及父节点变换；源文件不修改。
 
@@ -19,7 +23,7 @@ asset2sim prepare-mesh --kind generated \
 
 导出后重新加载 GLB，检查 AABB、0.20m 尺度、双向顶点误差、三角面连接与绕向、表面积、拓扑及清理结果。坐标容差为 `max(1e-7m, 最长边×1e-6)`；未通过时标记失败，保留回读诊断。
 
-`physical_adaptation.status` 表示物理准备状态：`ready` 为索引网格通过闭合、绕向和正体积等检查；`needs_repair` 需要进一步处理或人工检查；`invalid` 表示输入无效或导出回读失败。处理完成状态仍单独记录在 `status` 中。若索引不闭合、同坐标诊断闭合且存在不同 UV，会标记 `uv_seam_candidate`，这是接缝证据而非自动修复；无 UV 证据时标记 `coincident_seam_candidate`。非流形边等几何问题列为 `geometry_review`。
+`physical_adaptation.status` 表示物理准备状态：`ready` 为索引网格通过闭合、绕向和正体积等检查；`needs_repair` 需要进一步处理或人工检查；`invalid` 表示输入无效或导出回读失败。处理完成状态仍单独记录在 `status` 中。若索引不闭合、同坐标诊断闭合且存在不同 UV，会标记 `uv_seam_candidate`，该标记提供接缝证据，网格保留原状；无 UV 证据时标记 `coincident_seam_candidate`。非流形边等几何问题列为 `geometry_review`。
 
 默认不清理、不填洞。根据需要显式选择：
 
@@ -27,8 +31,45 @@ asset2sim prepare-mesh --kind generated \
 - `--remove-degenerate`：删除零面积三角面；搭配 `--min-triangle-area <平方米>` 可指定面积阈值。
 - `--remove-unreferenced`：删除没有面引用的顶点。
 
-每次清理的阈值和数量写入 metadata，清理前后检查均保留。对有重复坐标的网格，报告另外提供仅在临时副本上合并坐标的拓扑诊断；它不会改变默认输出，也不能区分纹理接缝与恰好接触的不同部件。
+每次清理的阈值和数量写入 metadata，清理前后检查均保留。对有重复坐标的网格，报告另外提供仅在临时副本上合并坐标的拓扑诊断；诊断保留默认输出，重合坐标处的部件关系需结合对象结构判断。
 
-实际检查中，当前 SF3D 和 SPAR3D 卷尺 GLB 的纹理接缝分别造成 653 和 714 个按索引连接的分量；对完全相同坐标做诊断合并后均为单一水密分量。代表性输出位于 `results/assets/physics/`：`reference_ring` 保留参考坐标，`sf3d_snail` 和 `spar3d_snail` 显式使用了 `--merge-coincident`。此结果提示后续碰撞适配需要明确选择是否合并，不能仅凭原始索引拓扑判断物理闭合性。水密和正体积检查不等同于自相交检测；未可靠闭合的对象不应把体积当作可信物理体积。
+### 碰撞几何构建
 
-本轮完整回读结果保存在 `results/assets/physics/roundtrip_validation/`：四个项目 Debug 参考网格均为 `ready`；两模型卷尺默认输出均为 `needs_repair / uv_seam_candidate`，显式合并后均为 `ready`。最大顶点回读误差约为 4.2e-9m，均通过导出检查。合并坐标可能连接恰好接触的独立部件，因此 `ready` 仍需结合对象结构解释。
+碰撞模块接收 `prepare-mesh` 输出的 `normalized.glb`，沿用 Z-up、米制和已有坐标，不读取生成模型或 Ground Truth。CoACD 可在已有 SF3D 或 SPAR3D 环境中使用；MuJoCo 接触实验也提供独立的 `asset2sim-physics` 环境，见 [MuJoCo 接触评测](mujoco_contact_evaluation.md)。在模型环境安装碰撞依赖后运行：
+
+```bash
+conda activate asset2sim-sf3d
+python -m pip install -e '.[collision]'
+asset2sim build-collision \
+  --mesh results/assets/physics/roundtrip_validation/debug_ring/normalized.glb \
+  --condition C2 --output results/assets/collision/example_ring/C2
+```
+
+`C0` 用 trimesh / SciPy Qhull 构建单凸包；`C1`、`C2`、`C3` 使用官方 `coacd==1.0.14`，阈值分别为 0.10、0.05、0.02。默认公共设置见 `configs/collision/default.yaml`：种子 0，归一化凹度阈值（`real_metric: false`，阈值为归一化数值），其余搜索参数及预处理设置显式记录。对比时保持配置、输入及计算资源一致。
+
+每个结果写入新目录，包含独立的 `collision_000.obj` 等和 `colliders.json`。后者记录输入诊断、方法及设置、组件数、每个组件的顶点/三角面数和包围盒、总规模、分解时间、导出时间及表面误差。分解时间包括 CoACD 子进程启动和数据传递，不包括导出和误差计算。已有目录不会覆盖；失败时保留 JSON 和原因，使用前检查 `status: completed`。后续物理引擎逐个加载所有 OBJ。
+
+默认拒绝非水密、非流形、绕向不一致或体积不可靠的输入；退化面、重复面与未引用顶点应先通过显式记录的步骤处理。UV 接缝造成的索引分离也不自动合并，参见上文 Mesh 物理准备。如确需处理开放网格，复制配置并将 `coacd.preprocess_mode` 设为 `on`，然后传入 `--config <配置>` 和 `--allow-open`；内部预处理可能改变几何。`auto` 也可能触发内部预处理，官方接口不返回实际是否触发。C0 使用 `--allow-open` 时仅对输入顶点求凸包并记录警告。外部已准备网格可用 `--assume-prepared` 明确声明 Z-up 和米制。
+
+误差对输入表面和**所有组件表面**分别按面积采样各 10,000 点，种子分别为 0 和 1，使用最近采样点估计双向距离的均值、95 分位和最大值，长度单位为米；对称均值为两个方向均值的平均。独立随机采样存在采样误差，相同表面的采样结果也可能有非零距离。组件重叠时，指标包含内部面；接触行为通过物理实验另行测量。
+
+## 实验结论
+
+### 网格准备与回读
+
+实际检查中，当前 SF3D 和 SPAR3D 卷尺 GLB 的纹理接缝分别造成 653 和 714 个按索引连接的分量；对完全相同坐标做诊断合并后均为单一水密分量。代表性输出位于 `results/assets/physics/`：`reference_ring` 保留参考坐标，`sf3d_snail` 和 `spar3d_snail` 显式使用了 `--merge-coincident`。碰撞适配时可结合接缝诊断和对象结构选择是否合并。水密、正体积和自相交分别检查，可靠闭合的网格用于体积估计。
+
+完整回读结果保存在 `results/assets/physics/roundtrip_validation/`：四个项目 Debug 参考网格均为 `ready`；两模型卷尺默认输出均为 `needs_repair / uv_seam_candidate`，显式合并后均为 `ready`。最大顶点回读误差约为 4.2e-9m，均通过导出检查。合并坐标可能连接恰好接触的独立部件，因此 `ready` 仍需结合对象结构解释。
+
+### 圆环及生成资产的碰撞组件
+
+在 Intel Core Ultra 7 265K 上，对 Debug 圆环使用默认配置，结果保存在 `results/assets/collision/debug_ring/`：
+
+| 条件 | 组件数 | 总顶点 / 面数 | 构建时间（秒） | 双向均值（mm） |
+| --- | ---: | ---: | ---: | ---: |
+| C0 | 1 | 128 / 252 | 0.001 | 3.93 |
+| C1 | 7 | 184 / 340 | 1.08 | 2.48 |
+| C2 | 12 | 224 / 400 | 1.26 | 2.54 |
+| C3 | 16 | 256 / 448 | 1.35 | 2.73 |
+
+单凸包填平圆环孔洞；CoACD 使用更多组件近似孔洞，表面距离同时包含组件内部面和采样误差，随阈值变化呈非单调关系。SF3D 和 SPAR3D 的卷尺生成资产在显式合并接缝后也完成 C2 分解，分别得到 25 和 27 个组件；两组结果展示了碰撞构建接口的输出规模。
