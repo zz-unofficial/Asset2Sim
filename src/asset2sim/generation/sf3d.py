@@ -55,6 +55,7 @@ class SF3DConfig:
     target_vertex_count: int = -1
     seed: int = 0
     cpu_threads: int = 8
+    autocast_cache_enabled: bool = True
 
     def __post_init__(self) -> None:
         if self.device not in {"cuda", "cpu"}:
@@ -222,7 +223,9 @@ class SF3DGenerator:
             torch.cuda.reset_peak_memory_stats()
         inference_start = time.perf_counter()
         precision = (
-            torch.autocast("cuda", dtype=torch.bfloat16)
+            torch.autocast(
+                "cuda", dtype=torch.bfloat16, cache_enabled=self.config.autocast_cache_enabled
+            )
             if use_cuda and self.config.precision == "bfloat16"
             else nullcontext()
         )

@@ -62,6 +62,7 @@ def run_generation(
     run["status"] = "running"
     write_json(output / "run.json", run)
     failures = 0
+    pending_exports = 0
     try:
         if warm_repeats:
             timing_dir = output / "timing"
@@ -100,9 +101,17 @@ def run_generation(
                 }
                 try:
                     result.update(generator.generate(Path(record["image"]), output / sample_id))
-                    if not (output / sample_id / "mesh.glb").is_file():
+                    if result.get("export_pending"):
+                        for field in ("raw_asset", "raw_metadata"):
+                            if not (output / sample_id / result[field]).is_file():
+                                raise RuntimeError(f"Missing deferred artifact: {field}")
+                            result[field] = f"{sample_id}/{result[field]}"
+                        result["status"] = "export_pending"
+                        pending_exports += 1
+                    elif not (output / sample_id / "mesh.glb").is_file():
                         raise RuntimeError("Generator did not export mesh.glb")
-                    result.update(status="ok", mesh=f"{sample_id}/mesh.glb")
+                    else:
+                        result.update(status="ok", mesh=f"{sample_id}/mesh.glb")
                     print(
                         f"{sample_id}: {result['faces']} faces, {result['inference_seconds']:.2f}s"
                     )
@@ -120,8 +129,18 @@ def run_generation(
         run["status"] = "interrupted"
         raise
     else:
-        run["status"] = "completed" if not failures else "completed_with_failures"
+        run["status"] = (
+            "completed_with_failures"
+            if failures
+            else "generated_pending_export"
+            if pending_exports
+            else "completed"
+        )
     finally:
-        run.update(failures=failures, finished_at=datetime.now(timezone.utc).isoformat())
+        run.update(
+            failures=failures,
+            pending_exports=pending_exports,
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
         write_json(output / "run.json", run)
     return failures

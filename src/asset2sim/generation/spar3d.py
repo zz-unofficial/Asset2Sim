@@ -40,6 +40,7 @@ class SPAR3DConfig:
     low_vram: bool = True
     seed: int = 0
     cpu_threads: int = 8
+    autocast_cache_enabled: bool = True
 
     def __post_init__(self):
         if self.device not in {"cuda", "cpu"} or self.precision not in {"bfloat16", "float32"}:
@@ -193,7 +194,9 @@ class SPAR3DGenerator(SF3DGenerator):
             torch.cuda.reset_peak_memory_stats()
         start = time.perf_counter()
         precision = (
-            torch.autocast("cuda", dtype=torch.bfloat16)
+            torch.autocast(
+                "cuda", dtype=torch.bfloat16, cache_enabled=self.config.autocast_cache_enabled
+            )
             if cuda and self.config.precision == "bfloat16"
             else nullcontext()
         )

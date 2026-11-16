@@ -15,7 +15,7 @@ class Generator(Protocol):
     def load(self) -> None: ...
 
     def generate(self, image_path: Path, output_dir: Path) -> dict[str, Any]:
-        """Write input.png and mesh.glb; return measurements in the shared units."""
+        """Write input and GLB, or explicit deferred artifacts; return measured units."""
         ...
 
     def metadata(self) -> dict[str, Any]:

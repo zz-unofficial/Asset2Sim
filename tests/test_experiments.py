@@ -80,6 +80,28 @@ def test_runner_keeps_failed_inputs_and_identity_in_exports(tmp_path):
         export_runs([output], target)
 
 
+def test_runner_records_deferred_export_without_claiming_mesh_success(tmp_path):
+    class DeferredGenerator(FakeGenerator):
+        def generate(self, image_path, output_dir):
+            output_dir.mkdir()
+            (output_dir / "native_asset.pt").write_bytes(b"fixture")
+            (output_dir / "native_asset.json").write_text("{}")
+            return {
+                "export_pending": True,
+                "raw_asset": "native_asset.pt",
+                "raw_metadata": "native_asset.json",
+                "faces": 1,
+                "inference_seconds": 0.1,
+            }
+
+    output = tmp_path / "deferred"
+    assert run_generation(DeferredGenerator(), dataset(tmp_path), output) == 0
+    rows = [json.loads(s) for s in (output / "results.jsonl").read_text().splitlines()]
+    assert all(r["status"] == "export_pending" and "mesh" not in r for r in rows)
+    assert all((output / r["raw_asset"]).is_file() for r in rows)
+    assert json.loads((output / "run.json").read_text())["status"] == "generated_pending_export"
+
+
 def test_load_failure_still_exports_all_planned_inputs(tmp_path):
     manifest = dataset(tmp_path)
     output = tmp_path / "run"
