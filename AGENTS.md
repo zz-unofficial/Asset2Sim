@@ -39,7 +39,7 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 2. 新建 `environments/<model>/` 和 `scripts/setup_<model>.sh`，提供独立 Conda 环境，并在其中以 editable 方式安装本项目。
 3. 实现 `generation/<model>.py`，遵循 `generation/base.py` 的 `Generator` 协议，提供 `create_generator(parameters)` 与 `fetch_assets(parameters)`；在 `generation/registry.py` 注册模型名和模块路径。
 4. 新建模型配置，再复制已有实验配置，复用同一数据清单和样例 ID。只在 `overrides` 中填写本次变化的参数。
-5. 用一个已有输入验证加载、生成、GLB 读取与结果汇总，再运行完整清单。将操作和观察写入 `docs/protocols/model_reproduction.md`。
+5. 用一个已有输入验证加载、生成、GLB 读取与结果汇总；选有明显图案的真实对象，对照实际输入、原始 GLB 贴图、输入视角及新视角渲染，检查 UV、颜色和相机朝向，再运行完整清单。将操作和观察写入 `docs/protocols/model_reproduction.md`。
 
 适配器负责 `load()`、`generate(image_path, output_dir)`、`metadata()` 与 `recover()`，`parameters` 返回解析后的参数字典。`generate()` 创建样例目录，保存实际输入 `input.png` 与原始 `mesh.glb`，返回 `vertices`、`faces`、`preprocess_seconds`、`inference_seconds`、`export_seconds`、`peak_allocated_mib`；其他测量可增加字段。`metadata()` 记录权重版本、软件/设备、原始坐标轴与单位。公共运行器负责清单选择、批量调度和记录，新增模型沿用这套逻辑。
 
