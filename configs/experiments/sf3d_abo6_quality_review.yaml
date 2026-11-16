@@ -1,0 +1,7 @@
+name: sf3d_abo6_quality_review
+model: sf3d
+model_config: ../models/sf3d.yaml
+manifest: ../../.local/local-evaluation-20261116/abo6.jsonl
+overrides:
+  seed: 0
+  autocast_cache_enabled: false

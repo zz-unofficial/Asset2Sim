@@ -1,0 +1,7 @@
+name: spar3d_d2_local_20261116
+model: spar3d
+model_config: ../models/spar3d.yaml
+manifest: ../../data/manifests/benchmark_d2_local_20261116.jsonl
+overrides:
+  seed: 0
+  autocast_cache_enabled: false

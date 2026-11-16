@@ -14,7 +14,23 @@ def render_job(job: dict) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
-    scene.cycles.device = "CPU"
+    scene.render.use_persistent_data = True
+    scene.render.threads_mode = "FIXED"
+    scene.render.threads = job.get("render_threads", 4)
+    device = job.get("render_device", "CPU").upper()
+    if device == "CUDA":
+        preferences = bpy.context.preferences.addons["cycles"].preferences
+        preferences.compute_device_type = "CUDA"
+        preferences.get_devices()
+        if not any(d.type == "CUDA" for d in preferences.devices):
+            raise RuntimeError("CUDA rendering requested but Blender found no CUDA device")
+        for item in preferences.devices:
+            item.use = item.type == "CUDA"
+        scene.cycles.device = "GPU"
+    elif device == "CPU":
+        scene.cycles.device = "CPU"
+    else:
+        raise ValueError(f"Unsupported render device: {device}")
     scene.cycles.samples = job.get("samples", 32)
     scene.cycles.seed = 0
     scene.render.resolution_x = scene.render.resolution_y = job["image_size"]
@@ -75,6 +91,8 @@ def render_job(job: dict) -> None:
                 "engine": scene.render.engine,
                 "device": scene.cycles.device,
                 "samples": scene.cycles.samples,
+                "persistent_data": scene.render.use_persistent_data,
+                "render_threads": scene.render.threads,
                 "view_transform": scene.view_settings.view_transform,
                 "exposure": scene.view_settings.exposure,
                 "hdri": job.get("hdri"),

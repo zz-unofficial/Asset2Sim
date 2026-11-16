@@ -1,0 +1,8 @@
+name: spar3d_seed1_local_20261116
+model: spar3d
+model_config: ../models/spar3d.yaml
+manifest: ../../data/manifests/gso_seed8_local_20261116.jsonl
+overrides:
+  seed: 1
+  low_vram: true
+  autocast_cache_enabled: false
