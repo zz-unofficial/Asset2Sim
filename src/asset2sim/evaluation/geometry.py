@@ -54,6 +54,28 @@ def transform_points(points: np.ndarray, transform: np.ndarray) -> np.ndarray:
     return points @ transform[:3, :3].T + transform[:3, 3]
 
 
+def normalized_mesh_in_frame(
+    mesh: trimesh.Trimesh, frame: np.ndarray, extent: float = 1.0
+) -> tuple[trimesh.Trimesh, np.ndarray]:
+    """Normalize own bounds in a declared rigid frame; return the pre-frame map.
+
+    ``frame @ normalization`` maps the original mesh into the unit-sized frame.
+    This uses no reference dimensions or fitted scale.
+    """
+    rotation = frame[:3, :3]
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6) or not np.isclose(
+        np.linalg.det(rotation), 1, atol=1e-6
+    ):
+        raise ValueError("Normalization frame must be proper rigid")
+    posed = mesh.copy()
+    posed.apply_transform(frame)
+    _, normalization = normalized_mesh(posed, extent)
+    before_frame = np.linalg.inv(frame) @ normalization @ frame
+    result = mesh.copy()
+    result.apply_transform(before_frame)
+    return result, before_frame
+
+
 def distances(predicted: np.ndarray, reference: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     if len(predicted) == 0 or len(reference) == 0:
         raise ValueError("Surface point sets must be nonempty")

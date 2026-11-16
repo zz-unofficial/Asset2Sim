@@ -28,8 +28,10 @@ def main() -> None:
     )
     parser.add_argument("--freeze", type=Path)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--warm-repeats", type=int, default=3)
+    parser.add_argument("--warm-repeats", type=int)
     args = parser.parse_args()
+    if args.warm_repeats is None:
+        args.warm_repeats = 0 if args.mode == "pilot" else 3
     if args.warm_repeats < 0 or not 0 <= args.seed < 2**32:
         parser.error("warm_repeats must be nonnegative; seed must fit uint32")
     if not args.run_id or any(

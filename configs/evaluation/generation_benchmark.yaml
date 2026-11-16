@@ -12,6 +12,12 @@ cpu_threads: 8
 minimum_render_views: 16
 blender: blender
 render_samples: 32
+source_camera_elevation_degrees:
+  sf3d: 0
+  spar3d: 0
+  # TRELLIS.2 has no explicit conditioning-camera pose in the inference API.
+  trellis2: 20
+export_normalization_frame: declared_camera_pose
 # Used only for references marked pbr_eligible in the frozen manifest.
 hdri: third_party/TRELLIS.2/assets/hdri/forest.exr
 # Fixed coordinate declarations; no per-object fitting in the export_pose track.
@@ -19,4 +25,5 @@ hdri: third_party/TRELLIS.2/assets/hdri/forest.exr
 export_to_canonical:
   sf3d: [[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
   spar3d: [[0, 0, -1, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
-  trellis2: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+  # Inverse of official to_glb: (x, y, z) -> (x, z, -y).
+  trellis2: [[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]

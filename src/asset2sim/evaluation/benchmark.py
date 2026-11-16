@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import platform
+import shutil
 import subprocess
 import sys
 from itertools import combinations
@@ -15,6 +17,8 @@ import numpy as np
 import trimesh
 from PIL import Image, ImageDraw
 from scipy.ndimage import binary_fill_holes
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 from asset2sim.artifacts import read_jsonl, write_json
 from asset2sim.data.manifest import load_manifest
@@ -23,12 +27,26 @@ from asset2sim.evaluation.geometry import (
     align_surfaces,
     distance_summary,
     normalized_mesh,
+    normalized_mesh_in_frame,
     scene_mesh,
     surface_metrics,
     transform_points,
 )
 from asset2sim.evaluation.paper import ImageMetrics, silhouette_metrics
 from asset2sim.experiments.config import load_parameters
+
+
+def face_component_count(mesh: trimesh.Trimesh) -> int:
+    """Count face-connected components without constructing component meshes."""
+    count = len(mesh.faces)
+    if not count:
+        return 0
+    adjacency = mesh.face_adjacency
+    graph = coo_matrix(
+        (np.ones(len(adjacency), dtype=np.uint8), (adjacency[:, 0], adjacency[:, 1])),
+        shape=(count, count),
+    ).tocsr()
+    return int(connected_components(graph, directed=False, return_labels=False))
 
 
 def topology(mesh: trimesh.Trimesh) -> dict:
@@ -39,7 +57,7 @@ def topology(mesh: trimesh.Trimesh) -> dict:
         return {
             "vertices": len(value.vertices),
             "faces": len(value.faces),
-            "components": len(value.split(only_watertight=False)),
+            "components": face_component_count(value),
             "boundary_edges": int(np.count_nonzero(edges == 1)),
             "nonmanifold_edges": int(np.count_nonzero(edges > 2)),
             "watertight": bool(value.is_watertight),
@@ -65,6 +83,45 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def generation_cost_records(samples: list[dict], runs: dict[str, Path]) -> list[dict]:
+    """One row per planned model/input, including absent and failed assets."""
+    result = []
+    fields = (
+        "preprocess_seconds",
+        "inference_seconds",
+        "archive_seconds",
+        "native_archive_seconds",
+        "export_seconds",
+        "peak_allocated_mib",
+        "peak_reserved_mib",
+    )
+    for model, run in runs.items():
+        path = run / "results.jsonl"
+        records = {r["sample_id"]: r for r in read_jsonl(path)} if path.exists() else {}
+        for sample in samples:
+            row = records.get(sample["sample_id"], {})
+            generated = row.get("raw_generation_status", row.get("status", "missing"))
+            result.append(
+                {
+                    "model": model,
+                    "sample_id": sample["sample_id"],
+                    "object_id": sample["object_id"],
+                    "view_id": sample["view_id"],
+                    "generation_status": generated,
+                    "generation_valid": generated in ("ok", "generated", "export_pending"),
+                    "export_valid": row.get("status") == "ok"
+                    and bool(row.get("mesh"))
+                    and (run / row["mesh"]).is_file(),
+                    "result_missing": not bool(row),
+                    "failed_stage": row.get("failed_stage"),
+                    "error": row.get("error"),
+                    "source_run": str(run),
+                    **{key: row.get(key) for key in fields},
+                }
+            )
+    return result
 
 
 def opening_metrics(predicted: Image.Image, reference: Image.Image) -> dict:
@@ -140,6 +197,11 @@ def aggregate(rows: list[dict]) -> tuple[list[dict], list[dict]]:
                 if row["track"] == track and row["model"] == b
             }
             for metric in (
+                "generation_chamfer_l1",
+                "generation_hausdorff95",
+                "generation_fscore@0.01",
+                "generation_fscore@0.02",
+                "generation_fscore@0.05",
                 "chamfer_l1",
                 "hausdorff95",
                 "fscore@0.01",
@@ -153,7 +215,7 @@ def aggregate(rows: list[dict]) -> tuple[list[dict], list[dict]]:
             ):
                 values = [
                     left[obj][metric] - right[obj][metric]
-                    for obj in left.keys() & right.keys()
+                    for obj in sorted(left.keys() & right.keys())
                     if left[obj].get(metric) is not None
                     and right[obj].get(metric) is not None
                     and left[obj].get(f"{metric}_n") == left[obj]["n_planned_views"]
@@ -171,12 +233,43 @@ def aggregate(rows: list[dict]) -> tuple[list[dict], list[dict]]:
     return objects, paired
 
 
-def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: Path) -> None:
+def evaluate(
+    manifest: Path,
+    runs: dict[str, Path],
+    output: Path,
+    config_path: Path,
+    checkpoint: Path | None = None,
+) -> None:
     """Evaluate all planned inputs; normalized distances, seconds and MiB are recorded."""
     config = load_parameters(config_path)
     samples = load_manifest(manifest)
     output = output.resolve()
+    if output.exists() and config.get("reuse_completed_output", False):
+        protocol_path = output / "protocol.json"
+        summary_path = output / "summary.json"
+        if protocol_path.is_file() and summary_path.is_file():
+            protocol = json.loads(protocol_path.read_text())
+            summary = json.loads(summary_path.read_text())
+            required = (
+                "per_sample.csv",
+                "per_view.csv",
+                "per_object.csv",
+                "paired.csv",
+                "failures.csv",
+                "coverage.csv",
+            )
+            if (
+                protocol.get("config") == config
+                and protocol.get("manifest") == str(manifest.resolve())
+                and protocol.get("runs") == {k: str(v.resolve()) for k, v in runs.items()}
+                and summary.get("rows") == len(samples) * len(runs) * 2
+                and all((output / name).is_file() for name in required)
+            ):
+                print(f"Reusing completed evaluation: {output}", flush=True)
+                return
     output.mkdir(parents=True, exist_ok=False)
+    costs = generation_cost_records(samples, runs)
+    write_csv(output / "generation_costs.csv", costs)
     write_json(
         output / "protocol.json",
         {
@@ -196,7 +289,44 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
             metric = ImageMetrics(config.get("lpips_network", "alex"), config["cpu_threads"])
         except Exception as error:  # noqa: BLE001 - keep geometry if LPIPS setup fails
             metric_error = f"{type(error).__name__}: {error}"
-    rows, views, failures = [], [], []
+    rows, views = [], []
+    if checkpoint is not None:
+        source = json.loads((checkpoint / "protocol.json").read_text())
+        if source["config"] != config or source["runs"] != {
+            k: str(v.resolve()) for k, v in runs.items()
+        }:
+            raise ValueError("Checkpoint config or generation runs differ")
+        source_samples = {s["sample_id"]: s for s in load_manifest(Path(source["manifest"]))}
+        if any(source_samples.get(s["sample_id"]) != s for s in samples):
+            raise ValueError("Checkpoint inputs differ")
+        selected = {s["sample_id"] for s in samples}
+        rows = [r for r in read_jsonl(checkpoint / "progress.jsonl") if r["sample_id"] in selected]
+        keys = {(r["model"], r["sample_id"], r["track"]) for r in rows}
+        if len(keys) != len(rows):
+            raise ValueError("Duplicate checkpoint rows")
+        view_file = checkpoint / "view_progress.jsonl"
+        views = (
+            [r for r in read_jsonl(view_file) if (r["model"], r["sample_id"], r["track"]) in keys]
+            if view_file.exists()
+            else []
+        )
+        for r in rows:
+            relative = Path("assets") / r["model"] / r["sample_id"] / r["track"]
+            target = output / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to((checkpoint / relative).resolve(), target_is_directory=True)
+        for name, records in (("progress.jsonl", rows), ("view_progress.jsonl", views)):
+            (output / name).write_text("".join(json.dumps(r) + "\n" for r in records))
+        write_json(
+            output / "checkpoint_source.json",
+            {"path": str(checkpoint.resolve()), "reused_rows": len(rows)},
+        )
+        if (checkpoint / "reference_renders").is_dir():
+            shutil.copytree(
+                checkpoint / "reference_renders", output / "reference_renders", symlinks=True
+            )
+    completed = {(r["model"], r["sample_id"], r["track"]) for r in rows}
+    failures = [r for r in rows if r["status"] != "ok"]
     audits = []
     for path in {sample["reference_audit"] for sample in samples if sample.get("reference_audit")}:
         audits.extend(json.loads(Path(path).read_text()))
@@ -229,11 +359,16 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                     "category": sample.get("category"),
                     "dataset": sample.get("dataset", "custom"),
                     "pbr_eligible": sample.get("pbr_eligible", False),
-                    "generation_status": measured.get("status", run.get("status", "missing_run")),
+                    "generation_status": measured.get(
+                        "raw_generation_status",
+                        measured.get("status", run.get("status", "missing_run")),
+                    ),
                     "run": str(run_dir),
                     "seed": run.get("config", {}).get("seed"),
                 }
                 for track in ("export_pose", "aligned_diagnostic"):
+                    if (model, sid, track) in completed:
+                        continue
                     row = base | {
                         "track": track,
                         "geometry_status": "pending",
@@ -295,10 +430,26 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                             view = np.asarray(
                                 camera["views"][camera["conditioning_view"]]["camera_to_world"]
                             )
-                            canonical = camera_pose(0, 20, 2.5)
+                            # Official SF3D/SPAR3D default_cond_c2w is a horizontal
+                            # +X camera; the reference renderer's elevation is separate.
+                            elevation = config.get("source_camera_elevation_degrees", {}).get(
+                                model, 20
+                            )
+                            canonical = camera_pose(0, elevation, 2.5)
                             rotation = np.eye(4)
                             rotation[:3, :3] = view[:3, :3] @ canonical[:3, :3].T
                             alignment = rotation @ alignment
+                            if config.get("export_normalization_frame") == "declared_camera_pose":
+                                predicted, extra = normalized_mesh_in_frame(predicted, alignment)
+                                p = transform_points(p, extra)
+                                pn = extra @ pn
+                                row["normalization_frame"] = "declared_camera_pose"
+                            row["source_camera_elevation_degrees"] = elevation
+                            row["pose_convention_status"] = (
+                                "official_condition_camera"
+                                if model in ("sf3d", "spar3d") and elevation == 0
+                                else "assumed_condition_camera"
+                            )
                         row.update(
                             surface_metrics(
                                 transform_points(p, alignment),
@@ -320,8 +471,86 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                                 native_mesh = trimesh.Trimesh(
                                     vertices=data["vertices"], faces=data["faces"], process=False
                                 )
-                                native_mesh, _ = normalized_mesh(native_mesh, 1)
+                                native_mesh, native_initial_normalization = normalized_mesh(
+                                    native_mesh, 1
+                                )
                                 diagnostics["native_prediction"] = topology(native_mesh)
+                                if run.get("native_to_export") is not None:
+                                    native_mesh.apply_transform(np.asarray(run["native_to_export"]))
+                                    native_mesh, native_normalization = normalized_mesh(
+                                        native_mesh, 1
+                                    )
+                                    if (
+                                        track == "export_pose"
+                                        and config.get("export_normalization_frame")
+                                        == "declared_camera_pose"
+                                    ):
+                                        native_mesh, extra = normalized_mesh_in_frame(
+                                            native_mesh, alignment
+                                        )
+                                        native_normalization = extra @ native_normalization
+                                    native_points = trimesh.sample.sample_surface(
+                                        native_mesh, config["surface_points"], seed=rng_seed
+                                    )[0]
+                                    native_alignment = alignment
+                                    if track == "aligned_diagnostic":
+                                        count = config["alignment_points"]
+                                        native_alignment, _ = align_surfaces(
+                                            native_points[:count],
+                                            q[:count],
+                                            config["rotation_step_degrees"],
+                                            config["icp_iterations"],
+                                            config["icp_tolerance"],
+                                        )
+                                    thresholds = config.get("fscore_thresholds", [0.01, 0.02, 0.05])
+                                    row.update(
+                                        {
+                                            "native_" + k: v
+                                            for k, v in surface_metrics(
+                                                transform_points(native_points, native_alignment),
+                                                q,
+                                                thresholds,
+                                            ).items()
+                                        }
+                                    )
+                                    row.update(
+                                        {
+                                            "native_" + k: v
+                                            for k, v in distance_summary(
+                                                transform_points(native_points, native_alignment), q
+                                            ).items()
+                                        }
+                                    )
+                                    row.update(
+                                        {
+                                            "export_vs_native_" + k: v
+                                            for k, v in surface_metrics(
+                                                p, native_points, thresholds
+                                            ).items()
+                                        }
+                                    )
+                                    write_json(
+                                        folder / "native_transforms.json",
+                                        {
+                                            "native_to_export": run["native_to_export"],
+                                            "initial_normalization": native_initial_normalization.tolist(),
+                                            "normalization": native_normalization.tolist(),
+                                            "alignment": native_alignment.tolist(),
+                                        },
+                                    )
+                        row["generation_geometry_source"] = (
+                            "native_prediction"
+                            if "native_chamfer_l1" in row
+                            else "model_output_glb"
+                        )
+                        for name in (
+                            "chamfer_l1",
+                            "hausdorff95",
+                            "fscore@0.01",
+                            "fscore@0.02",
+                            "fscore@0.05",
+                        ):
+                            row["generation_" + name] = row.get("native_" + name, row[name])
                         write_json(folder / "topology.json", diagnostics)
                         for representation, info in diagnostics.items():
                             for method in ("raw", "position_welded_diagnostic"):
@@ -331,7 +560,7 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                                         for k, v in info[method].items()
                                     }
                                 )
-                        row["components"] = len(predicted.split(only_watertight=False))
+                        row["components"] = diagnostics["prediction"]["raw"]["components"]
                         row["faces"] = len(mesh.faces)
                         write_json(
                             folder / "transforms.json",
@@ -350,25 +579,64 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                             "preprocess_seconds",
                             "inference_seconds",
                             "export_seconds",
+                            "archive_seconds",
+                            "native_archive_seconds",
                             "peak_allocated_mib",
                             "peak_reserved_mib",
                         ):
                             row[key] = measured.get(key)
+                        with (output / "geometry_progress.jsonl").open("a") as stream:
+                            stream.write(json.dumps(row) + "\n")
                         if metric_error:
                             stage = "image_metric_initialization"
                             raise RuntimeError(metric_error)
                         if metric is not None:
                             stage = "render"
                             jobs = []
+                            reference_outputs = {}
                             modes = ["texture"]
                             if sample.get("pbr_eligible", False):
                                 modes.append("pbr")
                             for mode in modes:
                                 for name in ("reference", "prediction"):
+                                    render_output = folder / mode / name
+                                    if name == "reference":
+                                        render_output = output / "reference_renders" / sid / mode
+                                        # A reused aligned track already contains the same
+                                        # normalized reference and all fixed-camera renders.
+                                        cached = (
+                                            output
+                                            / "assets"
+                                            / model
+                                            / sid
+                                            / "aligned_diagnostic"
+                                            / mode
+                                            / "reference"
+                                        )
+                                        if not render_output.exists() and all(
+                                            (cached / f"{i:03d}.png").is_file()
+                                            for i in range(len(camera["views"]))
+                                        ):
+                                            render_output.parent.mkdir(parents=True, exist_ok=True)
+                                            render_output.symlink_to(
+                                                cached.resolve(), target_is_directory=True
+                                            )
+                                        ready = all(
+                                            (render_output / f"{i:03d}.png").is_file()
+                                            for i in range(len(camera["views"]))
+                                        )
+                                        if ready:
+                                            reference_outputs[mode] = render_output
+                                            continue
+                                        if render_output.exists():
+                                            render_output = render_output.with_name(
+                                                f"{mode}_{model}_{track}"
+                                            )
+                                        reference_outputs[mode] = render_output
                                     jobs.append(
                                         {
                                             "mesh": str(folder / f"{name}.glb"),
-                                            "output": str(folder / mode / name),
+                                            "output": str(render_output),
                                             "mode": mode,
                                             "image_size": camera["image_size"],
                                             "yfov_degrees": camera["yfov_degrees"],
@@ -377,6 +645,8 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                                             if config.get("hdri")
                                             else None,
                                             "samples": config.get("render_samples", 32),
+                                            "render_device": config.get("render_device", "CPU"),
+                                            "render_threads": config.get("render_threads", 4),
                                         }
                                     )
                             write_json(folder / "render_jobs.json", jobs)
@@ -400,6 +670,11 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                                     row["render_error"] = str(error)
                             stage = "render" if row.get("render_error") else "image_metrics"
                             for mode in modes:
+                                shutil.copytree(
+                                    reference_outputs[mode],
+                                    folder / mode / "reference",
+                                    copy_function=os.link,
+                                )
                                 mode_views = []
                                 for index in range(len(camera["views"])):
                                     with (
@@ -449,6 +724,10 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
                                         | values
                                     )
                                     views.append(view_row)
+                                    with (output / "view_progress.jsonl").open("a") as stream:
+                                        stream.write(json.dumps(view_row) + "\n")
+                                    with (output / "progress_views.jsonl").open("a") as stream:
+                                        stream.write(json.dumps(view_row) + "\n")
                                     mode_views.append(values)
                                 for name in {key for v in mode_views for key in v}:
                                     valid = [v[name] for v in mode_views if name in v]
@@ -487,7 +766,35 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
         write_csv(output / "per_sample.csv", rows)
         write_csv(output / "per_view.csv", views)
         write_csv(output / "failures.csv", failures)
+    write_reports(samples, runs, output, rows, views, costs, audits)
+
+
+def write_reports(samples, runs, output, rows, views, costs, audits):
+    """Write common reports for a complete evaluation or merged shards."""
+    failures = [r for r in rows if r["status"] != "ok"]
     objects, paired = aggregate(rows)
+    coverage = []
+    for model in runs:
+        planned = [r for r in costs if r["model"] == model]
+        for track in ("export_pose", "aligned_diagnostic"):
+            evaluated = [r for r in rows if r["model"] == model and r["track"] == track]
+            coverage.append(
+                {
+                    "model": model,
+                    "track": track,
+                    "planned_inputs": len(planned),
+                    "planned_objects": len({s["object_id"] for s in samples}),
+                    "generation_valid_inputs": sum(r["generation_valid"] for r in planned),
+                    "export_valid_inputs": sum(r["export_valid"] for r in planned),
+                    "missing_results": sum(r["result_missing"] for r in planned),
+                    "geometry_valid_inputs": sum(
+                        r.get("geometry_status") == "ok" for r in evaluated
+                    ),
+                    "image_valid_inputs": sum(r.get("image_status") == "ok" for r in evaluated),
+                    "evaluated_inputs": len(evaluated),
+                }
+            )
+    write_csv(output / "coverage.csv", coverage)
     robustness = []
     for model in runs:
         for object_id in sorted({s["object_id"] for s in samples}):
@@ -552,6 +859,7 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
             "preprocess_seconds",
             "inference_seconds",
             "export_seconds",
+            "archive_seconds",
             "native_archive_seconds",
             "peak_allocated_mib",
             "peak_reserved_mib",
@@ -562,6 +870,11 @@ def evaluate(manifest: Path, runs: dict[str, Path], output: Path, config_path: P
         timing_summary.append(summary)
     write_csv(output / "timing_summary.csv", timing_summary)
     main_metrics = (
+        "generation_chamfer_l1",
+        "generation_hausdorff95",
+        "generation_fscore@0.01",
+        "generation_fscore@0.02",
+        "generation_fscore@0.05",
         "chamfer_l1",
         "hausdorff95",
         "fscore@0.01",
@@ -706,9 +1019,16 @@ def main() -> None:
     parser.add_argument("--run", action="append", required=True, help="model=run_directory")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--checkpoint", type=Path)
     args = parser.parse_args()
     runs = dict(value.split("=", 1) for value in args.run)
-    evaluate(args.manifest, {k: Path(v) for k, v in runs.items()}, args.output, args.config)
+    evaluate(
+        args.manifest,
+        {k: Path(v) for k, v in runs.items()},
+        args.output,
+        args.config,
+        args.checkpoint,
+    )
 
 
 if __name__ == "__main__":

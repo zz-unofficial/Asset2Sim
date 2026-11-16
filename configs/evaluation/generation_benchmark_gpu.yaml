@@ -1,0 +1,6 @@
+extends: generation_benchmark.yaml
+name: generation_benchmark_cuda_render
+render_device: CUDA
+render_threads: 3
+cpu_threads: 3
+reuse_completed_output: true

@@ -1,0 +1,3 @@
+extends: generation_benchmark_gpu.yaml
+name: generation_benchmark_cuda_render
+blender: .local/tools/blender-4.2.0-linux-x64/blender
