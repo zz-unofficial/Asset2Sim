@@ -1,0 +1,5 @@
+# Derived GLB condition; native generation remains unchanged.
+remesh: false
+decimation_target: 100000
+texture_size: 1024
+extension_webp: true

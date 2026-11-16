@@ -27,6 +27,7 @@ class TRELLIS2Config:
     texture_size: int = 4096
     remesh: bool = True
     extension_webp: bool = True
+    defer_export: bool = False
 
     def __post_init__(self) -> None:
         if self.pipeline_type != "512":
@@ -121,6 +122,23 @@ class TRELLIS2Generator:
         faces = len(mesh.faces)
         if vertices == 0 or faces == 0:
             raise ValueError("TRELLIS.2 generated an empty mesh")
+        if self.config.defer_export:
+            from asset2sim.generation.trellis2_artifacts import save_native_asset
+
+            start = time.perf_counter()
+            save_native_asset(mesh, output_dir, asdict(self.config))
+            return {
+                "preprocess_seconds": preprocess_seconds,
+                "inference_seconds": inference_seconds,
+                "archive_seconds": time.perf_counter() - start,
+                "peak_allocated_mib": torch.cuda.max_memory_allocated() / 1024**2,
+                "peak_reserved_mib": torch.cuda.max_memory_reserved() / 1024**2,
+                "vertices": vertices,
+                "faces": faces,
+                "export_pending": True,
+                "raw_asset": "native_asset.pt",
+                "raw_metadata": "native_asset.json",
+            }
         # Save the native mesh before official GLB postprocessing changes its topology.
         import numpy as np
 

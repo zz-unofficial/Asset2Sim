@@ -5,7 +5,7 @@ tqdm
 easydict
 opencv-python-headless
 trimesh>=4.4,<5
-transformers
+transformers==4.57.6
 tensorboard
 pandas
 lpips==0.1.4
