@@ -7,6 +7,7 @@ theme: light
 
 import Header from './components/Header.astro';
 import RobotDemo from './components/RobotDemo.astro';
+import GenerationResults from './components/GenerationResults.astro';
 
 <Header title="Asset2Sim" authors={[]} links={[{name: 'GitHub', url: 'https://github.com/zz-unofficial/Asset2Sim', icon: 'ri:github-fill'}]} />
 
@@ -24,7 +25,9 @@ The workflow connects 3D generation, geometric preparation, collision constructi
 
 ## 3D Generation
 
-SF3D and SPAR3D are integrated into the generation interface, with TRELLIS.2 under reproduction. Generated meshes and their associated runtime measurements will be presented here.
+We evaluate SF3D, SPAR3D, and TRELLIS.2 on shared inputs, comparing reconstruction geometry and appearance. Explore selected results and the complete object-level measurements below.
+
+<GenerationResults />
 
 ## Physics Adaptation
 
@@ -40,7 +43,7 @@ Robotic grasping and interaction experiments extend the evaluation to downstream
 
 ## Results
 
-Experiments are ongoing. Tables, figures, and quantitative comparisons will be published here when available.
+The generation benchmark and its object-level measurements are available in the [quantitative results](#quantitative-results) above. Physical interaction experiments are described separately.
 
 ## Interactive Demo
 

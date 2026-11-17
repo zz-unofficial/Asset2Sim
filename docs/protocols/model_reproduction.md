@@ -837,3 +837,9 @@ SPAR3D 在 17/24 个对象上获得更低 CD，在 18/24 个对象上获得更�
 SPAR3D 的整图 PSNR 和 LPIPS 较好，但前景并集 PSNR 略低；轮廓、白色背景面积与纹理颜色共同影响整图指标。案例中还存在贴图亮度差异和几何对齐后的正反面、上下方向错位，需结合参考图解释。
 
 两组 GSO 和 Omni 各使用同一对象与评测配置、各一个推理种子。结果支持本机固定子集下的比较；扩大类别覆盖和重复随机种子后才能进一步判断稳定性。资产的碰撞和交互结果见 [受控接触与跨来源评测](mujoco_contact_evaluation.md)。
+
+### 网站展示资源
+
+网站 “Explore in 3D” 展示 ABO6 的六种材质案例与 GSO32 的篮子、瓶子和恐龙案例，使用各自固定输入视角，以及 `quality_review_20261116/{abo6,gso32/combined}/assets/<model>/<sample>/aligned_diagnostic/prediction.glb` 保存的评测导出资产。网页为了显示 Z-up 几何而调整观察方向，不修改源实验资产；实时 3D 查看器的照明与评测使用的 HDRI 不同。网站中的图表和逐对象明细取自同一复核目录下 `gso32/combined` 和 `abo6` 的 `medians.csv`、`per_object.csv`，只使用 `aligned_diagnostic` 轨道；JSON 保存于 `website/src/research/metrics.json`。网页材料是精简展示副本，完整协议和原始结果仍以本文件及各结果目录为准。
+
+网页额外显示的 flat/PBR PSNR、SSIM 与前景指标等对象中位数由同一 `per_object.csv` 的有效对象计算；有效和计划对象数一并显示。
