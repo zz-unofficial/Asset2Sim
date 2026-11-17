@@ -311,3 +311,34 @@ def test_part_comparison_keeps_shared_frame_and_unmatched_reference(tmp_path):
     assert result[0]["alignment"] == "shared_object_transform"
     assert result[-1]["reference_parts"] == 2
     assert result[-1]["recall"] == 0.5
+
+
+def test_deformable_eligibility_and_property_sources(tmp_path):
+    folder = make_asset(tmp_path / "asset", flex=True)
+    path = folder / "basic_info.json"
+    properties = json.loads(path.read_text())
+    properties["group_info"] = {"0": [0], "1": [[0], 0, "A"]}
+    path.write_text(json.dumps(properties))
+    audit = audit_asset(folder, "deformable")
+    evidence = audit["structure"]["deformable_evidence"]
+    assert evidence["eligible_group_ids"] == ["1"]
+    assert evidence["valid_surface_flex_count"] == 1
+    density = next(row for row in audit["transfers"] if row["field"] == "density")
+    assert density["source_type"] == "predicted"
+    assert density["export_source_type"] == "derived"
+    assert density["source_unit_verified"] is False
+    assert density["export_file"] == "basic.xml"
+    damping = next(row for row in audit["transfers"] if row["field"] == "damping")
+    assert damping["source_type"] == "constant"
+
+
+def test_fixed_pose_metrics_require_declared_correspondence(tmp_path):
+    folder = make_asset(tmp_path / "asset")
+    reference = folder / "objs/0/0.glb"
+    unverified = geometry_metrics(folder, reference, count=100)
+    assert unverified["fixed_pose"]["status"] == "NA_coordinate_correspondence_unverified"
+    measured = geometry_metrics(
+        folder, reference, count=100, prediction_to_reference=np.eye(4).tolist()
+    )
+    assert measured["fixed_pose"]["status"] == "ok"
+    assert measured["fixed_pose"]["alignment"] == "declared_transform_only"

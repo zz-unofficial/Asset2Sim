@@ -19,6 +19,7 @@ import yaml
 
 from asset2sim.artifacts import git_revision, write_json
 from asset2sim.data.manifest import load_manifest, select_samples
+from asset2sim.experiments.physx_validation import sha256, validate_rle
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -121,6 +122,8 @@ def check_stage(stage: str, asset: Path) -> dict[str, Any]:
                 raise ValueError(f"Invalid part coordinates: {part.name}")
             if not np.isfinite(value).all() or (value < 0).any() or (value >= 64).any():
                 raise ValueError(f"Part coordinates must be finite and inside the 64-cube: {part}")
+            if np.any(value != np.round(value)):
+                raise ValueError(f"Noninteger part coordinates: {part.name}")
         if not np.isfinite(coords).all() or (coords < 0).any() or (coords >= 64).any():
             raise ValueError("Voxel coordinates must be finite and inside the 64-cube")
         if np.any(coords != np.round(coords)):
@@ -134,6 +137,20 @@ def check_stage(stage: str, asset: Path) -> dict[str, Any]:
         saved = {int(part.stem.removeprefix("ind_")) for part in parts}
         if not declared or declared != saved or declared != set(range(len(declared))):
             raise ValueError("Predicted part IDs and saved voxel parts must match contiguously")
+        if not np.array_equal(
+            coords,
+            np.concatenate(
+                [np.load(asset / f"ind_{i}.npy", allow_pickle=False) for i in range(len(parts))]
+            ),
+        ):
+            raise ValueError("Combined voxels differ from declared parts")
+        from asset2sim.evaluation.physx_omni.audit import raw_parts
+
+        descriptions = raw_parts(asset / "basic_info.txt")
+        if set(descriptions) != saved or any(
+            not item.get("name") or not item.get("description") for item in descriptions.values()
+        ):
+            raise ValueError("Raw part descriptions are incomplete")
         return {"parts": len(parts), "voxel_entries": len(coords)}
     if stage == "decode":
         import numpy as np
@@ -160,7 +177,17 @@ def check_stage(stage: str, asset: Path) -> dict[str, Any]:
             raise ValueError("No exported physical parts")
         for name in ("basic.urdf", "basic.xml"):
             ET.parse(asset / name)
-        return {"physical_parts": len(properties["parts"])}
+        from asset2sim.evaluation.physx_omni.audit import audit_asset
+
+        audit = audit_asset(asset, "rigid")
+        structural_errors = [
+            e
+            for e in audit["errors"]
+            if not e.startswith(("property_transfer:", "raw_to_json:", "invalid_physical_value:"))
+        ]
+        if structural_errors:
+            raise ValueError(f"Export structure invalid: {structural_errors}")
+        return {"physical_parts": len(properties["parts"]), "audit": audit}
     raise ValueError(f"Unknown stage: {stage}")
 
 
@@ -228,6 +255,7 @@ def run_physx_omni(
         "config": config,
         "upstream_commit": git_revision(upstream),
         "manifest": str(manifest.resolve()),
+        "execution_policy": "serial_stage_subprocesses",
         "n_planned": len(records),
         "n_success": 0,
         "n_failed": 0,
@@ -295,7 +323,12 @@ def run_physx_omni(
             shutil.copyfile(
                 record["image"], workspace / ("original_input" + Path(record["image"]).suffix)
             )
-            current.update(status="ok", seconds=time.perf_counter() - started)
+            current.update(
+                status="ok",
+                execution_success=True,
+                output_valid=True,
+                seconds=time.perf_counter() - started,
+            )
             if reuse_run is not None and from_stage != "infer":
                 source = reuse_run.resolve() / record["sample_id"]
                 with (
@@ -307,8 +340,15 @@ def run_physx_omni(
                     if not np.array_equal(np.asarray(previous.convert("RGB")), np.asarray(actual)):
                         raise ValueError("Reused generation input differs from selected RGB")
                 shutil.copytree(source / "ours_demo", workspace / "ours_demo")
+                for name in ("basic.xml", "basic.urdf", "basic_info.json"):
+                    (workspace / "ours_demo/asset" / name).unlink(missing_ok=True)
             for stage, argv in commands:
-                current = {"stage": stage, "status": "running"}
+                current = {
+                    "stage": stage,
+                    "status": "running",
+                    "execution_success": None,
+                    "output_valid": False,
+                }
                 item["stages"].append(current)
                 write_json(output / "run.json", summary)
                 started = time.perf_counter()
@@ -316,10 +356,25 @@ def run_physx_omni(
                     from_stage
                 ):
                     current.update(check_stage(stage, workspace / "ours_demo/asset"))
+                    if stage == "infer":
+                        current.update(validate_rle(workspace / "ours_demo/asset", upstream))
                     current.update(
-                        status="ok", reused=True, seconds=0.0, source_run=str(reuse_run.resolve())
+                        status="ok",
+                        reused=True,
+                        output_valid=True,
+                        seconds=0.0,
+                        source_run=str(reuse_run.resolve()),
                     )
                     continue
+                asset = workspace / "ours_demo/asset"
+                if stage == "export":
+                    frozen = workspace / "frozen_generation"
+                    shutil.copytree(asset, frozen)
+                    current["frozen_generation_sha256"] = {
+                        str(p.relative_to(frozen)): sha256(p)
+                        for p in frozen.rglob("*")
+                        if p.is_file()
+                    }
                 env = dict(os.environ)
                 env["PYTHONPATH"] = str(upstream) + os.pathsep + env.get("PYTHONPATH", "")
                 with (workspace / f"{stage}.log").open("w") as log:
@@ -343,14 +398,31 @@ def run_physx_omni(
                         timeout=config["stage_timeout_seconds"],
                     )
                 current["returncode"] = result.returncode
+                current["execution_success"] = result.returncode == 0
                 metrics = workspace / f"{stage}_resources.json"
                 if metrics.is_file():
                     current["resources"] = json.loads(metrics.read_text())
+                asset = workspace / "ours_demo/asset"
+                if stage == "export":
+                    snapshot = workspace / (
+                        "export_deformable" if sample_config["deformable"] else "export_default"
+                    )
+                    shutil.copytree(asset, snapshot)
+                    shutil.copyfile(workspace / "export.log", snapshot / "export.log")
+                    current["export_snapshot"] = str(snapshot)
+                    current["artifact_sha256"] = {
+                        str(p.relative_to(snapshot)): sha256(p)
+                        for p in snapshot.rglob("*")
+                        if p.is_file()
+                    }
+                current.update(check_stage(stage, asset))
+                if stage == "infer":
+                    current.update(validate_rle(asset, upstream))
+                current["output_valid"] = True
                 if result.returncode:
                     raise RuntimeError(
                         f"{stage} returned {result.returncode}; see {workspace / (stage + '.log')}"
                     )
-                current.update(check_stage(stage, workspace / "ours_demo/asset"))
                 current["artifact_bytes_cumulative"] = sum(
                     path.stat().st_size
                     for path in (workspace / "ours_demo/asset").rglob("*")

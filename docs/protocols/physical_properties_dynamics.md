@@ -113,15 +113,34 @@ Articulated 的 URDF、关节状态、标注和参考部件仅由数据准备/�
 
 当前上游 VLM 使用 `do_sample=False`、`max_length=32768`，解码使用 `seed=1`，部件 GLB 导出为 `simplify=0.5`、`texture_size=1024`。基线保留这些设置并写入解析后配置；源码版本变化时核对实际调用参数。对失败部件保存记录；对象级成功要求必需部件和类别结构完整。上游可能捕获错误后返回 0，因此按实际阶段产物判定。
 
+阶段判定同时记录 `execution_success`（子进程返回码为零）和 `output_valid`（独立产物检查通过）。正式成功要求两者均为真；复用阶段记录 `reused` 和来源运行，本轮执行状态为 NA。VLM 检查原始部件描述、连续部件 ID、非空有限整数体素、64³ 范围及合并数组一致性，并隔离加载官方纯 RLE 辅助函数，重放 `coord_<id>.txt` 与保存的体素逐项比较。Decoder 检查每个预测部件的 OBJ/GLB 可读、非空和有限顶点。Export 检查 JSON、URDF/MJCF、部件覆盖和文件引用；属性传递错误另存审计结果。
+
+每阶段由独立子进程串行执行，RTX 4090D 24 GB 上先结束 VLM 再加载 Decoder。运行记录保存输入清单、实际 RGB、checkpoint 路径、上游 commit、环境版本、返回码、日志、资源峰值与耗时。
+
+Cloth 导出对照使用同一轮冻结的 VLM 和 Decoder 结果，分别创建两个新 run 目录：
+
+```bash
+asset2sim physx-omni --manifest <统一清单> --sample-id <Cloth样本ID> \
+  --reuse-run <冻结生成运行> --from-stage export --no-deformable \
+  --output results/raw/physx_omni/<D0运行>
+asset2sim physx-omni --manifest <统一清单> --sample-id <Cloth样本ID> \
+  --reuse-run <冻结生成运行> --from-stage export --deformable \
+  --output results/raw/physx_omni/<D1运行>
+```
+
+每个样本保存 `frozen_generation/`、D0 的 `export_default/` 或 D1 的 `export_deformable/`，以及本次日志、文件哈希和导出参数。复制的旧 basic.xml、basic.urdf、basic_info.json 在导出前移除，使本次判定对应新产物。
+
+柔性审计分别报告 `group_info` 非根组的 A 标记、XML 中可观察的柔性分支结果、`dim="2"` 与 elasticity 数值。分支的观察结果来自最终文件；没有对应结构时记录 `not_observed`。原始 group_info 随生成结果保留。
+
 #### 6. 几何质量评价
 
 复用现有几何评价器的采样、CD-L1 与 F-score 实现，冻结点数、种子、阈值及单位。输出绝对尺度和归一化形状两条轨道：前者使用有来源的原始米制参考和刚体变换，后者显式归一化；三个方向尺寸误差独立报告。缺少可靠原始尺度时保留形状指标及尺度字段审计。
 
 Rigid 评价 CD、F-score、BBox Error、几何完整性、连通、退化、空腔/把手/薄壁。Bowl/Cup 的几何开放和材料体积问题按实际参考解释。
 
-Articulated 先按部件语义和几何建立匹配，再计算部件数量误差、召回、缺失/额外部件、部件 CD 和定义明确的表面或体素 Part IoU。全体部件采用同一整体对齐变换，按选定输入状态比较参考几何。
+Articulated 的主要指标为部件数量/召回、Parent-Child、Joint Type、Joint Axis 和 Joint Origin；Joint Range、部件 CD 及关节文本描述为辅助指标。单帧图像提供的是当前姿态，运动范围误差结合图像中的可辨识性解释。先按部件语义和几何建立匹配，再计算部件数量误差、召回、缺失/额外部件、部件 CD 和定义明确的表面或体素 Part IoU。全体部件采用同一整体对齐变换，按选定输入状态比较参考几何。
 
-Deformable 评价同帧表面 CD、F-score、Surface Completeness、Normal Consistency、连通、退化、自相交与薄片完整性。完整性采用参考表面到预测表面的阈值召回并声明阈值；法线区分几何表面匹配与像素投影匹配，保存有效区域和方向约定。合理开放薄片按开放参考评价；RGB/GT 配对是定量表面指标的前置条件。
+Cloth 先检查相机与 Mesh 坐标及显式 `prediction_to_reference` 变换，固定姿态轨道仅应用该声明变换；缺少可靠对应时状态为 `NA_coordinate_correspondence_unverified`。归一化刚体对齐单独作为形状诊断；评价不使用非刚性配准。法线主指标采用无向点积，适合薄片双面语义，前后面解释结合参考方向记录。Deformable 评价同帧表面 CD、F-score、Surface Completeness、Normal Consistency、连通、退化、自相交与薄片完整性。完整性采用参考表面到预测表面的阈值召回并声明阈值；法线区分几何表面匹配与像素投影匹配，保存有效区域和方向约定。合理开放薄片按开放参考评价；RGB/GT 配对是定量表面指标的前置条件。
 
 #### 7. 类别专属属性与结构评价
 
@@ -141,7 +160,7 @@ GSO32 与 PartNet-Mobility 可能与模型训练数据重叠；来源关系随�
 
 检查文件存在、XML/URDF 可解析、相对路径和纹理依赖、Mesh 可读性与有限值、索引和退化，以及物性字段有效性。Rigid 审计 geometry/scale/density/mass/COM/inertia；Articulated 审计 link、joint、父子树、类型、轴、原点、范围；Deformable 审计 flexcomp/对应结构、质量/密度来源、Young、Poisson、阻尼、厚度和弹性模式。
 
-逐字段追踪 VLM 原文 → JSON → 最终文件，状态为 PRESERVED、TRANSFORMED、OVERRIDDEN、MISSING，并补充 DERIVED、DEFAULTED、DEFERRED_TO_ENGINE。记录转换公式和单位，特别标明 URDF 惯性占位值、geom 密度推导、柔性分支触发与固定阻尼。
+逐字段保存 `source_type`：predicted、derived、default、constant、missing；原始预测来源与最终导出值的 `export_source_type` 分开记录。URDF 的固定质量/惯性占位值按该文件审计，MJCF 根据密度或编译器推导的量按 MJCF 审计。密度乘 1000 的转换明确记录 g/cm³ 假设及原文单位是否核实。逐字段追踪 VLM 原文 → JSON → 最终文件，状态为 PRESERVED、TRANSFORMED、OVERRIDDEN、MISSING，并补充 DERIVED、DEFAULTED、DEFERRED_TO_ENGINE。记录转换公式和单位，特别标明 URDF 惯性占位值、geom 密度推导、柔性分支触发与固定阻尼。
 
 本阶段的审计终点是静态文件。引擎编译时才确定的量记录其推导方式，留待后续加载阶段核验。`asset2sim physx-omni` 默认执行三个官方阶段；`--validate-mujoco` 可单独启用加载检查。静态评价入口为 `physx-omni-evaluate`，不导入 MuJoCo。
 

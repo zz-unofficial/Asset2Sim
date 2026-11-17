@@ -33,6 +33,7 @@ def main() -> None:
         try:
             import torch
 
+            metrics["cuda_runtime"] = torch.version.cuda
             if torch.cuda.is_available():
                 for device in range(torch.cuda.device_count()):
                     torch.cuda.reset_peak_memory_stats(device)

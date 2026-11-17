@@ -27,6 +27,7 @@ def geometry_metrics(
     count: int = 10000,
     seed: int = 0,
     reference_unit_m: float | None = None,
+    prediction_to_reference: list | None = None,
 ) -> dict:
     """Diagnostic shape alignment; one transform for all predicted parts, no fitting each part."""
     if count < 100:
@@ -67,6 +68,32 @@ def geometry_metrics(
         complete_predicted_parts=set(raw_parts(asset / "basic_info.txt"))
         == {int(path.parent.name) for path in paths},
     )
+    result["fixed_pose"] = {
+        "status": "NA_coordinate_correspondence_unverified",
+        "alignment": "none",
+        "normal_rule": "unsigned_surface_normal_dot",
+    }
+    if prediction_to_reference is not None:
+        transform = np.asarray(prediction_to_reference, dtype=float)
+        if (
+            transform.shape != (4, 4)
+            or not np.isfinite(transform).all()
+            or not np.allclose(transform[3], [0, 0, 0, 1])
+        ):
+            raise ValueError("Invalid declared prediction-to-reference transform")
+        fixed = native_prediction.copy()
+        fixed.apply_transform(transform)
+        fp, _ = trimesh.sample.sample_surface(fixed, count, seed=seed)
+        fr, _ = trimesh.sample.sample_surface(native_reference, count, seed=seed)
+        threshold_scale = native_reference.extents.max()
+        result["fixed_pose"] = {
+            "status": "ok",
+            "alignment": "declared_transform_only",
+            "length_unit": "reference_native_unit",
+            "transform": transform.tolist(),
+            "sample_count": count,
+            **surface_metrics(fp, fr, [threshold_scale * x for x in (0.01, 0.02, 0.05)]),
+        }
     if reference_unit_m is not None:
         if not np.isfinite(reference_unit_m) or reference_unit_m <= 0:
             raise ValueError("Reference meters-per-unit must be positive")

@@ -42,6 +42,14 @@ def _number(value: Any) -> float | None:
     return None
 
 
+def _xml_number(value: str | None) -> float | None:
+    try:
+        number = float(value)
+    except (ValueError, TypeError):
+        return None
+    return number if np.isfinite(number) else None
+
+
 def inertial_check(node: ET.Element, *, urdf: bool) -> dict:
     """Check explicitly stored inertia; inferred values remain an engine-stage concern."""
     if urdf:
@@ -192,6 +200,29 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
     flexes = [node for node in nodes if node.tag in {"flexcomp", "flex"}]
     if category == "deformable" and not flexes:
         errors.append("deformable_branch_not_activated")
+    groups = properties.get("group_info", {})
+    eligible = [
+        str(key)
+        for key, group in groups.items()
+        if str(key) != "0" and isinstance(group, list) and group and group[-1] == "A"
+    ]
+    structures["deformable_evidence"] = {
+        "eligible_group_ids": eligible,
+        "eligible_group_present": bool(eligible),
+        "branch_execution": "observed_in_xml" if flexes else "not_observed",
+        "flex_count": len(flexes),
+        "valid_surface_flex_count": sum(
+            node.get("dim") == "2"
+            and node.find("elasticity") is not None
+            and all(
+                _xml_number(node.find("elasticity").get(k)) is not None
+                for k in ("young", "poisson")
+            )
+            and _xml_number(node.find("elasticity").get("young")) > 0
+            and -1 < _xml_number(node.find("elasticity").get("poisson")) < 0.5
+            for node in flexes
+        ),
+    }
     structures["flex_count"] = len(flexes)
     for flex in flexes:
         elasticity = flex.find("elasticity")
@@ -236,6 +267,19 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
                 "status": "MISSING",
                 "export_values": [],
                 "raw_to_json": "unverified",
+                "source_type": "predicted"
+                if raw.get(label, {}).get(field) is not None
+                else "missing",
+                "export_source_type": "missing",
+                "export_file": "basic.xml" if field != "material" else "basic_info.json",
+                "source_unit_verified": bool(
+                    re.search(r"g/cm(?:\^?3|³)", str(raw.get(label, {}).get(field, "")))
+                )
+                if field == "density"
+                else None,
+                "unit_assumption": "official exporter assumes g/cm3 and multiplies by 1000"
+                if field == "density"
+                else None,
             }
             if field == "material":
                 row["raw_to_json"] = (
@@ -307,7 +351,32 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
                     row["status"] = "NOT_APPLICABLE"
                 if row["status"] in {"MISSING", "OVERRIDDEN"}:
                     errors.append(f"property_transfer:{label}:{field}:{row['status']}")
+            row["export_source_type"] = (
+                "missing"
+                if row["status"] in {"MISSING", "NOT_APPLICABLE"}
+                else "derived"
+                if row["status"] in {"DERIVED", "TRANSFORMED"}
+                else "predicted"
+                if row["status"] == "PRESERVED"
+                else "default"
+            )
             transfers.append(row)
+    for row in transfers:
+        if "source_type" not in row:
+            row["source_type"] = (
+                "derived"
+                if row["status"] == "DEFERRED_TO_ENGINE"
+                else "constant"
+                if row.get("source") == "official_export_constant"
+                else "default"
+            )
+    for inertial in structures.get("urdf_inertials", []):
+        inertial["source_type"] = (
+            "constant"
+            if inertial["mass_kg"] == 1.0 and np.allclose(inertial["principal_inertia"], [1, 1, 1])
+            else "missing"
+        )
+        inertial["export_file"] = "basic.urdf"
     return {
         "status": "failed" if errors else "ok",
         "errors": errors,

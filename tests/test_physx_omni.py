@@ -19,6 +19,9 @@ def make_inputs(tmp_path):
         (upstream / name).write_text("pass\n")
     for name in ("dataset", "trellis", "mjcf_source"):
         (upstream / name).mkdir()
+    (upstream / "1vlm_demo.py").write_text(
+        "def string_to_runs_by_z_lossless_robust(text, D=64): return text\ndef decode_voxel_2drle_by_z(runs, shape=None): return np.array([[1,2,3]])\n"
+    )
     weights = tmp_path / "weights"
     weights.mkdir()
     config = tmp_path / "config.yaml"
@@ -116,6 +119,7 @@ def test_complete_pipeline_records_load_result(tmp_path, monkeypatch, load_failu
             )
             np.save(asset / "allind.npy", [[1, 2, 3]])
             np.save(asset / "ind_0.npy", [[1, 2, 3]])
+            (asset / "coord_0.txt").write_text("test fixture RLE")
         elif argv[1].endswith("decoder_each.py"):
             part = asset / "objs/0"
             part.mkdir(parents=True)
@@ -124,7 +128,7 @@ def test_complete_pipeline_records_load_result(tmp_path, monkeypatch, load_failu
         else:
             (asset / "basic_info.json").write_text(json.dumps({"parts": [{"material": "wood"}]}))
             (asset / "basic.xml").write_text("<mujoco/>")
-            (asset / "basic.urdf").write_text('<robot name="asset"/>')
+            (asset / "basic.urdf").write_text('<robot name="asset"><link name="body"/></robot>')
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(physx_omni.subprocess, "run", execute)
@@ -182,6 +186,7 @@ def test_export_resume_reuses_geometry_and_does_not_load_mujoco(tmp_path, monkey
     asset = source / "ours_demo/asset"
     (asset / "objs/0").mkdir(parents=True)
     (asset / "basic_info.txt").write_text("l_0: body | 1 | wood | 0.6 | 0.01 | 0.3 | fixture")
+    (asset / "coord_0.txt").write_text("test fixture RLE")
     for name in ("allind", "ind_0"):
         np.save(asset / f"{name}.npy", [[1, 2, 3]])
     for suffix in ("glb", "obj"):
@@ -193,7 +198,7 @@ def test_export_resume_reuses_geometry_and_does_not_load_mujoco(tmp_path, monkey
         target = cwd / "ours_demo/asset"
         (target / "basic_info.json").write_text('{"parts": [{"material": "wood"}]}')
         (target / "basic.xml").write_text("<mujoco/>")
-        (target / "basic.urdf").write_text('<robot name="asset"/>')
+        (target / "basic.urdf").write_text('<robot name="asset"><link name="body"/></robot>')
         return subprocess.CompletedProcess(argv, 0)
 
     monkeypatch.setattr(physx_omni.subprocess, "run", execute)
@@ -209,6 +214,31 @@ def test_export_resume_reuses_geometry_and_does_not_load_mujoco(tmp_path, monkey
     assert not (asset / "basic.xml").exists()
     assert result["samples"][0]["stages"][1]["reused"]
     assert result["samples"][0]["stages"][2]["reused"]
+    first_xml = (tmp_path / "new/cup/export_default/basic.xml").read_bytes()
+    second = run_physx_omni(
+        config,
+        manifest,
+        tmp_path / "D1",
+        reuse_run=tmp_path / "previous",
+        from_stage="export",
+        deformable=True,
+    )
+    assert second["n_success"] == 1
+    assert (tmp_path / "D1/cup/export_deformable/basic.xml").is_file()
+    assert (tmp_path / "new/cup/export_default/basic.xml").read_bytes() == first_xml
+    assert (tmp_path / "D1/cup/frozen_generation/ind_0.npy").is_file()
+    export = second["samples"][0]["stages"][-1]
+    assert "export.log" in export["artifact_sha256"]
+    assert export["execution_success"] and export["output_valid"]
+    monkeypatch.setattr(
+        physx_omni.subprocess, "run", lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0)
+    )
+    stale = run_physx_omni(
+        config, manifest, tmp_path / "stale", reuse_run=tmp_path / "new", from_stage="export"
+    )
+    assert stale["n_failed"] == 1
+    assert stale["samples"][0]["stages"][-1]["execution_success"] is True
+    assert stale["samples"][0]["stages"][-1]["output_valid"] is False
 
 
 def test_stage_timeout_is_recorded_and_later_stages_blocked(tmp_path, monkeypatch):
@@ -243,3 +273,39 @@ def test_category_export_override_and_explicit_baseline(tmp_path):
     )
     assert activated["samples"][0]["commands"][-1]["argv"][-1] == "1"
     assert baseline["samples"][0]["commands"][-1]["argv"][-1] == "0"
+
+
+def test_zero_exit_does_not_make_invalid_output_successful(tmp_path):
+    config, manifest, _ = make_inputs(tmp_path)
+    result = run_physx_omni(config, manifest, tmp_path / "invalid")
+    stage = result["samples"][0]["stages"][1]
+    assert stage["execution_success"] is True
+    assert stage["output_valid"] is False
+    assert stage["status"] == "failed"
+
+
+def test_fractional_part_and_inconsistent_combined_voxels_rejected(tmp_path):
+    (tmp_path / "basic_info.txt").write_text("l_0: body | 1 | wood")
+    np.save(tmp_path / "ind_0.npy", [[1.5, 2, 3]])
+    np.save(tmp_path / "allind.npy", [[1, 2, 3]])
+    with pytest.raises(ValueError, match="Noninteger"):
+        check_stage("infer", tmp_path)
+    np.save(tmp_path / "ind_0.npy", [[2, 2, 3]])
+    with pytest.raises(ValueError, match="Combined voxels"):
+        check_stage("infer", tmp_path)
+
+
+def test_real_official_rle_replay(tmp_path):
+    from pathlib import Path
+
+    from asset2sim.experiments.physx_validation import validate_rle
+
+    upstream = Path(__file__).resolve().parents[1] / "third_party/PhysX-Omni"
+    if not (upstream / "1vlm_demo.py").is_file():
+        pytest.skip("Official submodule not initialized")
+    (tmp_path / "coord_0.txt").write_text("a:0 1\n0:layer a\n")
+    np.save(tmp_path / "ind_0.npy", [[0, 0, 0]])
+    assert validate_rle(tmp_path, upstream)["rle_replayed_parts"] == ["0"]
+    np.save(tmp_path / "ind_0.npy", [[1, 0, 0]])
+    with pytest.raises(ValueError, match="RLE replay differs"):
+        validate_rle(tmp_path, upstream)

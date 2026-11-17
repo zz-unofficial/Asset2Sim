@@ -59,6 +59,8 @@ def evaluate_run(run: Path, manifest: Path, output: Path, *, sample_count: int =
         }
         for stage in ("infer", "decode", "export"):
             row[stage] = stages.get(stage, {}).get("status", "missing")
+            row[f"{stage}_execution_success"] = stages.get(stage, {}).get("execution_success")
+            row[f"{stage}_output_valid"] = stages.get(stage, {}).get("output_valid")
         for stage in item.get("stages", []):
             costs.append(
                 {**base, **{key: value for key, value in stage.items() if key != "reason"}}
@@ -121,6 +123,7 @@ def evaluate_run(run: Path, manifest: Path, output: Path, *, sample_count: int =
                 asset,
                 Path(sample["reference_mesh"]),
                 count=sample_count,
+                prediction_to_reference=metadata.get("prediction_to_reference"),
                 reference_unit_m=metadata.get("reference_unit_m")
                 if metadata.get("absolute_scale_verified")
                 else None,
@@ -173,6 +176,10 @@ def evaluate_run(run: Path, manifest: Path, output: Path, *, sample_count: int =
             "end_to_end_success": sum(row["end_to_end_success"] for row in group),
             "geometry_valid": sum(
                 row["status"] == "ok" and row["category"] == category for row in geometry
+            ),
+            "fixed_pose_valid": sum(
+                row.get("fixed_pose", {}).get("status") == "ok" and row["category"] == category
+                for row in geometry
             ),
             "predicted_parts": sum(row.get("predicted_parts", 0) for row in group),
             "decoded_parts": sum(row.get("decoded_parts", 0) for row in group),
