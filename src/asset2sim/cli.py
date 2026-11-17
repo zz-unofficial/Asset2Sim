@@ -52,6 +52,13 @@ def main() -> int:
     physx_evaluate.add_argument("--manifest", type=Path, required=True)
     physx_evaluate.add_argument("--output", type=Path, required=True)
     physx_evaluate.add_argument("--sample-count", type=int, default=10000)
+    physx_finalize = commands.add_parser(
+        "physx-omni-finalize", help="Evaluate returned runs and export controls locally"
+    )
+    physx_finalize.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/evaluation/physx_omni_local.yaml"
+    )
+    physx_finalize.add_argument("--output", type=Path, required=True)
     physics = commands.add_parser("prepare-mesh", help="Prepare mesh geometry for physics")
     physics.add_argument("--mesh", type=Path, required=True)
     physics.add_argument("--kind", choices=("reference", "generated"), required=True)
@@ -204,6 +211,12 @@ def main() -> int:
                 args.run, args.manifest, args.output, sample_count=args.sample_count
             )
             print(f"Static evaluation: {result['n_planned']} planned samples; {args.output}")
+            return 0
+        if args.command == "physx-omni-finalize":
+            from asset2sim.evaluation.physx_omni.finalize import finalize_return
+
+            result = finalize_return(args.config, args.output)
+            print(f"Local evaluation: {result['n_planned']} samples; {args.output}")
             return 0
         if args.command == "physx-omni":
             from asset2sim.experiments.physx_omni import run_physx_omni

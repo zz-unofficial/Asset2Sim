@@ -215,6 +215,41 @@ GSO32 与 PartNet-Mobility 可能与模型训练数据重叠；来源关系随�
 
 当前已实现数据准备、分阶段运行和静态评价接口，并在已有 GSO 数据及最小三类别样例上验证。USD 原始资产的转换/渲染、真实 Cloth 的目录与帧配对将在下载指定数据后联调；服务器模型与 CUDA 环境尚未实测。
 
+#### 本机收尾评价
+
+回传数据位于 `.local/physx_omni/server_return_20261117/`。`prepared/manifest_local.jsonl` 引用本机输入和参考几何，`runs/local_comparison_index/` 按样本关联最终采用的运行，原始运行记录保留服务器来源路径。
+
+```bash
+conda activate asset2sim-physics
+asset2sim physx-omni-finalize \
+  --config configs/evaluation/physx_omni_local.yaml \
+  --output results/raw/physx_omni/<新的本机评价run_id>
+```
+
+配置中的 `bundle` 相对 YAML 解析；移动回传目录后更新该路径及本机清单。收尾复用现有静态评价器，以 10,000 个表面采样点评价七个输入；同时汇总全部尝试、Cloth D0/D1 和修复副本。D0 按刚体导出检查，D1 按柔性导出检查，修复副本单独列为工程处理结果。
+
+新增输出包括 `attempt_history.csv`、`export_controls.csv`、`metric_eligibility.csv` 和 `review_template.json`。前者保留失败与恢复记录；适用性表给出固定姿态、绝对尺度、部件/关节对应和物性标签的可用情况。人工复核模板列出实际输入、参考几何、预测部件与参考关节，`verified` 初始为 false。复核时填写部件、link、joint 的对应关系及坐标证据；确认后将 `part_matches/joint_matches/link_matches` 与经过核验的变换写入新的样本 metadata，并另建清单评价。源 metadata 保留原位。
+
+本机实际运行 `local_closeout_run01`：Rigid 3/3、Articulated 2/2 通过静态导出审计；两个原始 Cloth D1 均未通过，第一个为退化面，第二个为柔性分支未触发。独立修复后的第一个 Cloth D1 通过审计并保留 3 个二维 flexcomp。第二个 Cloth D0 通过刚体导出审计，D1 仍无 flexcomp。
+
+`local_closeout_run01` 的逐样本几何结果如下。两侧均归一化最长边，使用整体刚体对齐；CD-L1 为归一化距离，F-score 的阈值为最长边的 2%，使用 10,000 个表面采样点、seed=0。
+
+| 样本 | CD-L1 ↓ | F-score@2% ↑ |
+| --- | ---: | ---: |
+| Box | 0.0827 | 31.0% |
+| Mug | 0.0747 | 19.2% |
+| Hammer | 0.0124 | 82.6% |
+| Microwave | 0.0717 | 34.4% |
+| FoldingChair | 0.0916 | 9.8% |
+| Cloth Lr_bottom_edge/0629 | 0.1023 | 10.3% |
+| Cloth Lr_top_edge_2/0656 | 0.1122 | 4.1% |
+
+七个输入的 VLM 和 Decoder 均取得有效产物，20/20 个预测部件完成解码；最终采用运行中 5/7 通过静态端到端审计。第一个 Cloth 的修复副本独立报告，原始结果的成功计数仍为 5/7。Hammer 在当前案例中形状重建最好；FoldingChair 和两个 Cloth 的较低 F-score 表明即使整体对齐后仍有明显形状差异。第一个 Cloth 的部件语义与参考 Cloth 不一致，第二个 Cloth 未触发柔性导出，显示文件可导出、几何贴合与类别表达是不同层次。
+
+自动生成、导出对照与静态评价已经执行完成。参考部件/关节的一对一核验、输入与生成结果的视觉对照，以及有效相机坐标对应仍待本机收尾；当前关节对比和固定姿态误差的有效数量均为零。七个样本均缺少已核验的实测物性标签，密度和弹性参数仅报告模型先验及传递情况。
+
+当前七个输入均可计算归一化形状诊断。固定姿态对应、参考部件匹配和实测物性标签仍需分别核验；相应项目在评价表中保留 NA。实验结论结合输入图、参考几何及原始 VLM 描述解释。
+
 #### 接口使用与数据配置
 
 本机使用已有 `asset2sim-physics` 环境。下列输出目录均取新名称：

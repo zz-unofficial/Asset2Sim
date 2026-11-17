@@ -370,3 +370,90 @@ def test_deformable_audit_does_not_require_elasticity_for_rigid_root(tmp_path):
     )
     assert not any(error.startswith("property_transfer:0:") for error in audit["errors"])
     assert audit["structure"]["deformable_evidence"]["valid_surface_flex_count"] == 1
+
+
+def test_local_finalization_preserves_attempts_and_review_gaps(tmp_path):
+    import csv
+
+    import yaml
+    from PIL import Image
+
+    from asset2sim.evaluation.physx_omni.finalize import finalize_return
+
+    bundle = tmp_path / "bundle"
+    prepared = bundle / "prepared"
+    prepared.mkdir(parents=True)
+    run = bundle / "runs/local_comparison_index"
+    asset = make_asset(run / "box/ours_demo/asset")
+    Image.new("RGB", (8, 8)).save(prepared / "input.png")
+    metadata = prepared / "metadata.json"
+    metadata.write_text("{}")
+    record = {
+        "sample_id": "box",
+        "object_id": "box",
+        "view_id": "0",
+        "split": "evaluation",
+        "category": "rigid",
+        "image": str(prepared / "input.png"),
+        "reference_mesh": str(asset / "objs/0/0.glb"),
+        "sample_metadata": str(metadata),
+    }
+    (prepared / "manifest_local.jsonl").write_text(json.dumps(record) + "\n")
+    item = {
+        "input": record,
+        "status": "ok",
+        "stages": [{"stage": name, "status": "ok"} for name in ("infer", "decode", "export")],
+    }
+    (run / "run.json").write_text(json.dumps({"samples": [item]}))
+    attempt = bundle / "runs/server_failed_attempt"
+    attempt.mkdir()
+    (attempt / "run.json").write_text(
+        json.dumps(
+            {
+                "samples": [
+                    {
+                        "input": record,
+                        "stages": [
+                            {"stage": "decode", "status": "failed", "reason": "CUDA out of memory"}
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+    config = tmp_path / "local.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "bundle": "bundle",
+                "sample_count": 100,
+                "variants": [
+                    {
+                        "id": "missing_export",
+                        "sample_id": "box",
+                        "condition": "D0",
+                        "asset": "missing",
+                    }
+                ],
+            }
+        )
+    )
+    output = tmp_path / "evaluation"
+    assert finalize_return(config, output)["n_planned"] == 1
+    history = list(csv.DictReader((output / "attempt_history.csv").open()))
+    assert len(history) == 1 and history[0]["reason"] == "CUDA out of memory"
+    assert (
+        json.loads((output / "review_template.json").read_text())["samples"][0]["human_review"][
+            "verified"
+        ]
+        is False
+    )
+    assert metadata.read_text() == "{}"
+    assert (
+        next(csv.DictReader((output / "metric_eligibility.csv").open()))["shape_diagnostic"] == "ok"
+    )
+    eligibility = list(csv.DictReader((output / "metric_eligibility.csv").open()))
+    assert eligibility[0]["fixed_pose"] == "NA_coordinate_correspondence_unverified"
+    assert next(csv.DictReader((output / "export_controls.csv").open()))["status"] == "failed"
+    with pytest.raises(FileExistsError):
+        finalize_return(config, output)

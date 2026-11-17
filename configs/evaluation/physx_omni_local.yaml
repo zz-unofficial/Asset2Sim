@@ -1,0 +1,24 @@
+# Run with the existing asset2sim-physics environment from the repository root.
+bundle: ../../.local/physx_omni/server_return_20261117
+sample_count: 10000
+variants:
+  - id: cloth1_D0
+    sample_id: epfl_Lr_bottom_edge_0629
+    condition: D0_default
+    asset: runs/server_cloth1_default_export_20261117/epfl_Lr_bottom_edge_0629/ours_demo/asset
+  - id: cloth1_D1
+    sample_id: epfl_Lr_bottom_edge_0629
+    condition: D1_deformable
+    asset: runs/server_cloth_offload_20261117/epfl_Lr_bottom_edge_0629/ours_demo/asset
+  - id: cloth1_repaired_D1
+    sample_id: epfl_Lr_bottom_edge_0629
+    condition: D1_explicit_mesh_repair
+    asset: runs/server_cloth_repair_20261117/asset
+  - id: cloth2_D0
+    sample_id: epfl_Lr_top_edge_2_0656
+    condition: D0_default
+    asset: runs/server_cloth2_default_export_20261117/epfl_Lr_top_edge_2_0656/ours_demo/asset
+  - id: cloth2_D1
+    sample_id: epfl_Lr_top_edge_2_0656
+    condition: D1_deformable
+    asset: runs/server_cloth2_offload_retry_20261117/epfl_Lr_top_edge_2_0656/ours_demo/asset
