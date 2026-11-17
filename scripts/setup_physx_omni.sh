@@ -27,6 +27,10 @@ if ! conda run -n asset2sim-physx-omni python --version >/dev/null 2>&1; then
     conda env create -f environments/physx_omni/environment.yml
 fi
 conda activate asset2sim-physx-omni
+# PyTorch CUDA wheels keep library headers under their individual packages.
+for include_dir in "$CONDA_PREFIX"/lib/python*/site-packages/nvidia/*/include; do
+    [[ -d "$include_dir" ]] && export CPATH="$include_dir${CPATH:+:$CPATH}"
+done
 # Candidate stack: CUDA Toolkit 12.1 must be provided by the server image.
 nvcc --version | grep -q 'release 12.1' || {
     echo "Select a CUDA Toolkit 12.1 server image before installation." >&2
@@ -48,9 +52,9 @@ if [[ -n "${PHYSX_EXTENSIONS_ROOT:-}" ]]; then
     else
         source ./setup.sh --basic --xformers --flash-attn --spconv --kaolin
     fi
-    python -m pip install "$PHYSX_EXTENSIONS_ROOT/nvdiffrast"
-    python -m pip install "$PHYSX_EXTENSIONS_ROOT/diffoctreerast"
-    python -m pip install "$PHYSX_EXTENSIONS_ROOT/mip-splatting/submodules/diff-gaussian-rasterization"
+    python -m pip install --no-build-isolation "$PHYSX_EXTENSIONS_ROOT/nvdiffrast"
+    python -m pip install --no-build-isolation "$PHYSX_EXTENSIONS_ROOT/diffoctreerast"
+    python -m pip install --no-build-isolation "$PHYSX_EXTENSIONS_ROOT/mip-splatting/submodules/diff-gaussian-rasterization"
 else
     source ./setup.sh --basic --xformers --flash-attn --diffoctreerast --spconv --mipgaussian --kaolin --nvdiffrast
 fi

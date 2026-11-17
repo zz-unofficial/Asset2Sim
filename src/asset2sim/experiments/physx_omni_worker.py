@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import resource
 import runpy
 import sys
@@ -14,11 +15,14 @@ from pathlib import Path
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--metrics", type=Path, required=True)
+    parser.add_argument("--decoder-cpu-offload", action="store_true")
     parser.add_argument("argv", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
     if not argv:
         raise ValueError("Missing official script")
+    if args.decoder_cpu_offload and Path(argv[0]).name != "decoder_each.py":
+        raise ValueError("Decoder CPU offload only applies to decoder_each.py")
     metrics = {
         "gpu": [],
         "status": "failed",
@@ -35,12 +39,36 @@ def main() -> None:
 
             metrics["cuda_runtime"] = torch.version.cuda
             if torch.cuda.is_available():
+                torch.cuda.init()
                 for device in range(torch.cuda.device_count()):
                     torch.cuda.reset_peak_memory_stats(device)
         except ImportError:
             pass
     started = time.perf_counter()
     try:
+        if args.decoder_cpu_offload:
+            from trellis.pipelines import TrellisImageTo3DPipeline
+
+            from asset2sim.experiments.physx_decoder_offload import install_decoder_offload
+
+            if torch is None or not torch.cuda.is_available():
+                raise RuntimeError("Decoder CPU offload requires CUDA")
+            install_decoder_offload(TrellisImageTo3DPipeline, torch)
+            metrics["decoder_cpu_offload"] = True
+        dinov2_source = os.environ.get("ASSET2SIM_DINOV2_SOURCE")
+        if dinov2_source and Path(argv[0]).name == "decoder_each.py":
+            if torch is None or not Path(dinov2_source, "hubconf.py").is_file():
+                raise ValueError("ASSET2SIM_DINOV2_SOURCE must be a local DINOv2 checkout")
+            original_hub_load = torch.hub.load
+
+            def load_local_dinov2(repo_or_dir, *args, **kwargs):
+                if repo_or_dir == "facebookresearch/dinov2":
+                    repo_or_dir = dinov2_source
+                    kwargs["source"] = "local"
+                return original_hub_load(repo_or_dir, *args, **kwargs)
+
+            torch.hub.load = load_local_dinov2
+            metrics["dinov2_source"] = dinov2_source
         sys.argv = argv
         runpy.run_path(argv[0], run_name="__main__")
         metrics["status"] = "complete"

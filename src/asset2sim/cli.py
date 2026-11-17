@@ -27,6 +27,12 @@ def main() -> int:
     physx_omni.add_argument("--reuse-run", type=Path)
     physx_omni.add_argument("--from-stage", choices=("infer", "decode", "export"), default="infer")
     physx_omni.add_argument(
+        "--decoder-cpu-offload",
+        action="store_true",
+        default=None,
+        help="Use no-grad decoding and offload completed inference networks to CPU",
+    )
+    physx_omni.add_argument(
         "--deformable",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -212,6 +218,7 @@ def main() -> int:
                 reuse_run=args.reuse_run,
                 from_stage=args.from_stage,
                 deformable=args.deformable,
+                decoder_cpu_offload=args.decoder_cpu_offload,
             )
             print(
                 f"PhysX-Omni {result['status']}: "

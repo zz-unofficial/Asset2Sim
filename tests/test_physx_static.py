@@ -342,3 +342,31 @@ def test_fixed_pose_metrics_require_declared_correspondence(tmp_path):
     )
     assert measured["fixed_pose"]["status"] == "ok"
     assert measured["fixed_pose"]["alignment"] == "declared_transform_only"
+
+
+def test_deformable_audit_does_not_require_elasticity_for_rigid_root(tmp_path):
+    folder = make_asset(tmp_path / "asset")
+    part1 = folder / "objs/1"
+    part1.mkdir()
+    for suffix in ("obj", "glb"):
+        trimesh.creation.box().export(part1 / f"1.{suffix}")
+    info = json.loads((folder / "basic_info.json").read_text())
+    info["parts"].append({**info["parts"][0], "label": 1})
+    info["group_info"] = {"0": [0], "1": [[1], "0", [], "A"]}
+    (folder / "basic_info.json").write_text(json.dumps(info))
+    with (folder / "basic_info.txt").open("a") as stream:
+        stream.write("l_1: fabric | 1 | wood | 0.6 | 0.01 | 0.3 | fixture\n")
+    (folder / "basic.xml").write_text(
+        '<mujoco><asset><mesh name="l_0_body" file="objs/0/0.obj"/></asset>'
+        '<default><default class="l_0_body"><geom density="600"/></default></default>'
+        '<worldbody><flexcomp name="l_1_fabric" dim="2" file="objs/1/1.obj">'
+        '<elasticity young="10000000" poisson="0.3"/></flexcomp></worldbody></mujoco>'
+    )
+    audit = audit_asset(folder, "deformable")
+    root = [row for row in audit["transfers"] if row.get("part_id") == 0]
+    assert all(
+        next(row for row in root if row["field"] == key)["status"] == "NOT_APPLICABLE"
+        for key in ("young", "poisson")
+    )
+    assert not any(error.startswith("property_transfer:0:") for error in audit["errors"])
+    assert audit["structure"]["deformable_evidence"]["valid_surface_flex_count"] == 1

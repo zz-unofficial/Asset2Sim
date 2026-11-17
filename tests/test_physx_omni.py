@@ -309,3 +309,32 @@ def test_real_official_rle_replay(tmp_path):
     np.save(tmp_path / "ind_0.npy", [[1, 0, 0]])
     with pytest.raises(ValueError, match="RLE replay differs"):
         validate_rle(tmp_path, upstream)
+
+
+def test_subprocess_error_keeps_original_log_and_invalid_output(tmp_path, monkeypatch):
+    import subprocess
+
+    from asset2sim.experiments import physx_omni
+
+    config, manifest, _ = make_inputs(tmp_path)
+
+    def fail(argv, **kwargs):
+        kwargs["stdout"].write("Traceback\nCUDA out of memory\n")
+        return subprocess.CompletedProcess(argv, 1)
+
+    monkeypatch.setattr(physx_omni.subprocess, "run", fail)
+    monkeypatch.setattr(physx_omni, "git_revision", lambda _: "test")
+    result = run_physx_omni(config, manifest, tmp_path / "run")
+    stage = result["samples"][0]["stages"][1]
+    assert stage["execution_success"] is False
+    assert stage["output_valid"] is False
+    assert "exited 1" in stage["reason"]
+    assert "CUDA out of memory" in stage["error_log_tail"]
+
+
+def test_offload_choice_is_recorded_in_plan(tmp_path):
+    config, manifest, _ = make_inputs(tmp_path)
+    result = run_physx_omni(
+        config, manifest, tmp_path / "plan", decoder_cpu_offload=True, plan_only=True
+    )
+    assert result["config"]["decoder_cpu_offload"] is True

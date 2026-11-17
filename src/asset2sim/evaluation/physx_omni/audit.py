@@ -206,6 +206,17 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
         for key, group in groups.items()
         if str(key) != "0" and isinstance(group, list) and group and group[-1] == "A"
     ]
+    flexible_parts = {
+        int(label)
+        for key in eligible
+        if isinstance(groups[key][0], list)
+        for label in groups[key][0]
+        if isinstance(label, int)
+    }
+    for flex in flexes:
+        match = re.match(r"l_(\d+)(?:_|$)", flex.get("name", ""))
+        if match:
+            flexible_parts.add(int(match.group(1)))
     structures["deformable_evidence"] = {
         "eligible_group_ids": eligible,
         "eligible_group_present": bool(eligible),
@@ -301,7 +312,7 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
                     )
             if row["raw_to_json"] == "OVERRIDDEN":
                 errors.append(f"raw_to_json:{label}:{field}")
-            required = field == "density" or category == "deformable"
+            required = field == "density" or (category == "deformable" and label in flexible_parts)
             if (
                 field != "material"
                 and (required or numeric is not None)
@@ -347,7 +358,9 @@ def audit_asset(asset: Path, category: str) -> dict[str, Any]:
                     row["export_note"] = (
                         "flex_mass_from_density_and_geometry_requires_formula_audit"
                     )
-                elif category != "deformable" and field in {"young", "poisson"}:
+                elif field in {"young", "poisson"} and (
+                    category != "deformable" or label not in flexible_parts
+                ):
                     row["status"] = "NOT_APPLICABLE"
                 if row["status"] in {"MISSING", "OVERRIDDEN"}:
                     errors.append(f"property_transfer:{label}:{field}:{row['status']}")

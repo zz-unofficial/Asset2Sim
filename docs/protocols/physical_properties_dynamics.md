@@ -132,6 +132,21 @@ asset2sim physx-omni --manifest <统一清单> --sample-id <Cloth样本ID> \
 
 柔性审计分别报告 `group_info` 非根组的 A 标记、XML 中可观察的柔性分支结果、`dim="2"` 与 elasticity 数值。分支的观察结果来自最终文件；没有对应结构时记录 `not_observed`。原始 group_info 随生成结果保留。
 
+Microwave `7236` 的官方基线在 Decoder 网格提取时发生 24 GB 显存不足，保留该次 VLM 及失败记录。其他对象运行结束后，可复用该 VLM，在新目录启用可选显存适配：
+
+```bash
+asset2sim physx-omni \
+  --manifest data/processed/physx_omni/three_category_20261117.jsonl \
+  --sample-id partnet_microwave_7236 \
+  --reuse-run results/raw/physx_omni/server_pilot_partnet_microwave_7236_20261117 \
+  --from-stage decode --decoder-cpu-offload \
+  --output results/raw/physx_omni/<新的适配运行ID>
+```
+
+该模式仅在官方 `run_decoder` 生成调用内关闭梯度；潜变量采样后将图像编码器和潜变量流模型移至 CPU，后续贴图烘焙保持原有梯度行为。它保留相同体素、部件顺序、随机种子及导出参数，运行记录中的 `decoder_cpu_offload` 标识工程适配。先比较相同输入的基线与适配结果及时间、显存；24 GB 能否完成需通过实际运行确认。
+
+EPFL `Lr_bottom_edge/0629` 的显存适配运行已完成 Decoder 和导出。模型将输入描述为床架、枕头、床垫和毯子；其中三个 A 组导出二维 flexcomp，根组床架使用刚体表示。原始 `objs/0/0.obj` 有 352,332 个面，其中 2 个零面积三角面；原始导出保留在 `server_cloth_offload_20261117/`。独立目录 `server_cloth_repair_20261117/asset/` 从 OBJ 副本显式移除这两个面，保留顶点、材质记录和原始 GLB；修复后静态审计无结构或属性传递错误。`repair_report.json` 保存操作、前后诊断和语义误判。混合刚体/柔性结果的审计只对柔性部件要求弹性字段；语义误判仍按原始预测分析。
+
 #### 6. 几何质量评价
 
 复用现有几何评价器的采样、CD-L1 与 F-score 实现，冻结点数、种子、阈值及单位。输出绝对尺度和归一化形状两条轨道：前者使用有来源的原始米制参考和刚体变换，后者显式归一化；三个方向尺寸误差独立报告。缺少可靠原始尺度时保留形状指标及尺度字段审计。

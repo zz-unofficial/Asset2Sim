@@ -37,8 +37,9 @@ def load_config(path: Path) -> dict[str, Any]:
     config.setdefault("validate_mujoco", False)
     config.setdefault("stage_timeout_seconds", None)
     config.setdefault("measure_resources", False)
+    config.setdefault("decoder_cpu_offload", False)
     config.setdefault("category_overrides", {})
-    for key in ("validate_mujoco", "measure_resources"):
+    for key in ("validate_mujoco", "measure_resources", "decoder_cpu_offload"):
         if not isinstance(config[key], bool):
             raise TypeError(f"{key} must be a YAML boolean")
     if not isinstance(config["category_overrides"], dict):
@@ -223,9 +224,12 @@ def run_physx_omni(
     reuse_run: Path | None = None,
     from_stage: str = "infer",
     deformable: bool | None = None,
+    decoder_cpu_offload: bool | None = None,
 ) -> dict[str, Any]:
     """Run selected existing image records; retain each failed stage and continue the batch."""
     config = load_config(config_path)
+    if decoder_cpu_offload is not None:
+        config["decoder_cpu_offload"] = decoder_cpu_offload
     if validate_mujoco is not None:
         config["validate_mujoco"] = validate_mujoco
     if from_stage not in {"infer", "decode", "export"}:
@@ -378,13 +382,20 @@ def run_physx_omni(
                 env = dict(os.environ)
                 env["PYTHONPATH"] = str(upstream) + os.pathsep + env.get("PYTHONPATH", "")
                 with (workspace / f"{stage}.log").open("w") as log:
-                    if config["measure_resources"]:
+                    if config["measure_resources"] or (
+                        stage == "decode" and config["decoder_cpu_offload"]
+                    ):
                         argv = [
                             sys.executable,
                             "-m",
                             "asset2sim.experiments.physx_omni_worker",
                             "--metrics",
                             str(workspace / f"{stage}_resources.json"),
+                            *(
+                                ["--decoder-cpu-offload"]
+                                if stage == "decode" and config["decoder_cpu_offload"]
+                                else []
+                            ),
                             "--",
                             *argv[1:],
                         ]
@@ -438,9 +449,16 @@ def run_physx_omni(
             item["status"] = "ok"
             summary["n_success"] += 1
         except Exception as error:  # noqa: BLE001 -- preserve every sample's failure and continue.
+            reason = f"{type(error).__name__}: {error}"
+            if current.get("returncode"):
+                log_path = workspace / f"{current['stage']}.log"
+                if log_path.is_file():
+                    lines = log_path.read_text(errors="replace").replace("\r", "\n").splitlines()
+                    current["error_log_tail"] = "\n".join(lines[-12:])[-4000:]
+                reason = f"Subprocess exited {current['returncode']}; artifact check: {reason}"
             current.update(
                 status="failed",
-                reason=f"{type(error).__name__}: {error}",
+                reason=reason,
                 seconds=time.perf_counter() - started,
             )
             item["status"] = "failed"
