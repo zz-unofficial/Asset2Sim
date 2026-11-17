@@ -13,16 +13,16 @@ const fetchOk = async url => { const r = await fetch(url, {signal: AbortSignal.t
 const clamp = (x,a,b) => Math.max(a, Math.min(b,x));
 
 async function start() {
-  status.textContent = '正在初始化 MuJoCo WASM…';
+  status.textContent = 'Initializing MuJoCo WASM…';
   const mj = await loadMujoco({locateFile: path => path.endsWith('.wasm') ? wasmUrl : path});
   const [xmlResponse, listResponse] = await Promise.all([fetchOk(base+'scene.xml'), fetchOk(base+'files.json')]);
   const xml = await xmlResponse.text();
   const names = await listResponse.json();
   const vfs = new mj.MjVFS();
   let loaded = 0;
-  status.textContent = `正在加载场景资源 0 / ${names.length}…`;
-  await Promise.all(names.map(async name => { const r = await fetchOk(base+'assets/'+encodeURIComponent(name)); vfs.addBuffer(name,new Uint8Array(await r.arrayBuffer())); loaded++; status.textContent = `正在加载场景资源 ${loaded} / ${names.length}…`; }));
-  status.textContent = '正在编译机器人模型，请稍候…';
+  status.textContent = `Loading scene assets 0 / ${names.length}…`;
+  await Promise.all(names.map(async name => { const r = await fetchOk(base+'assets/'+encodeURIComponent(name)); vfs.addBuffer(name,new Uint8Array(await r.arrayBuffer())); loaded++; status.textContent = `Loading scene assets ${loaded} / ${names.length}…`; }));
+  status.textContent = 'Compiling robot model…';
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
   const model = mj.MjModel.from_xml_string(xml,vfs);
   const data = new mj.MjData(model), scratch = new mj.MjData(model);
@@ -73,9 +73,9 @@ async function start() {
     const t0=performance.now(); let steps=0; while(accum>=.002 && steps<25){for(let i=0;i<6;i++){commands[i]+=clamp(goal[i]-commands[i],-.65*.002,.65*.002);data.ctrl[i]=commands[i];}data.ctrl[6]=grip;mj.mj_step(model,data);accum-=.002;steps++;}stepMs+=performance.now()-t0;stepCount+=steps;
     for(const [i,mesh] of visual){mesh.position.fromArray(data.geom_xpos,3*i); const a=data.geom_xmat, n=9*i; const m=new THREE.Matrix4().set(a[n],a[n+1],a[n+2],0,a[n+3],a[n+4],a[n+5],0,a[n+6],a[n+7],a[n+8],0,0,0,0,1);mesh.quaternion.setFromRotationMatrix(m);}
     const w=viewport.clientWidth,h=viewport.clientHeight;if(renderer.domElement.width!==Math.round(w*renderer.getPixelRatio())||renderer.domElement.height!==Math.round(h*renderer.getPixelRatio())){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}orbit.update();renderer.render(scene,camera); frames++;
-    if(now-statsTime>=1000){let contacts=['no','no','no'];for(let i=0;i<data.ncon;i++){const c=data.contact.get(i); const a=c.geom1,b=c.geom2; if(model.geom_bodyid[a]===object||model.geom_bodyid[b]===object){const other=model.geom_bodyid[a]===object?b:a;if(pads.slice(0,2).includes(other))contacts[0]='yes';if(pads.slice(2).includes(other))contacts[1]='yes';if(other===table)contacts[2]='yes';}c.delete();}const height=data.xpos[3*object+2]; measurements.push({wall_s:(now-started)/1000,simulation_s:data.time,load_s:loadSeconds,fps:frames*1000/(now-statsTime),step_ms:stepMs/Math.max(stepCount,1),input_to_ik_ms:latency,object_z_m:height,left_contact:contacts[0]==='yes',right_contact:contacts[1]==='yes',table_contact:contacts[2]==='yes',gripper_control:grip, target_angles_rad:angles.slice(), pinch_rotation_matrix:Array.from(data.site_xmat.slice(site*9,site*9+9))}); status.textContent=`${homing?'归位中，请稍候':'可以操作'} | 方块高度 ${height.toFixed(3)} m | 加载 ${loadSeconds.toFixed(2)} s | FPS ${(frames*1000/(now-statsTime)).toFixed(1)} | mj_step ${(stepMs/Math.max(stepCount,1)).toFixed(3)} ms/step\n按键到接受 IK: ${latency===null?'—':latency.toFixed(1)+' ms'} | 接触 左 / 右 / 桌面: ${contacts.map(value=>value==='yes'?'是':'否').join(' / ')} | sim ${data.time.toFixed(1)} s`;statsTime=now;frames=stepCount=stepMs=0;}
+    if(now-statsTime>=1000){let contacts=['no','no','no'];for(let i=0;i<data.ncon;i++){const c=data.contact.get(i); const a=c.geom1,b=c.geom2; if(model.geom_bodyid[a]===object||model.geom_bodyid[b]===object){const other=model.geom_bodyid[a]===object?b:a;if(pads.slice(0,2).includes(other))contacts[0]='yes';if(pads.slice(2).includes(other))contacts[1]='yes';if(other===table)contacts[2]='yes';}c.delete();}const height=data.xpos[3*object+2]; measurements.push({wall_s:(now-started)/1000,simulation_s:data.time,load_s:loadSeconds,fps:frames*1000/(now-statsTime),step_ms:stepMs/Math.max(stepCount,1),input_to_ik_ms:latency,object_z_m:height,left_contact:contacts[0]==='yes',right_contact:contacts[1]==='yes',table_contact:contacts[2]==='yes',gripper_control:grip, target_angles_rad:angles.slice(), pinch_rotation_matrix:Array.from(data.site_xmat.slice(site*9,site*9+9))}); status.textContent=`${homing?'Homing':'Ready'} | Box height ${height.toFixed(3)} m | Load ${loadSeconds.toFixed(2)} s | FPS ${(frames*1000/(now-statsTime)).toFixed(1)} | mj_step ${(stepMs/Math.max(stepCount,1)).toFixed(3)} ms/step\nInput to accepted IK: ${latency===null?'—':latency.toFixed(1)+' ms'} | Contact left / right / table: ${contacts.join(' / ')} | sim ${data.time.toFixed(1)} s`;statsTime=now;frames=stepCount=stepMs=0;}
     requestAnimationFrame(frame);
   }
   mj.mj_forward(model,data);requestAnimationFrame(frame);
 }
-start().catch(e=>{console.error(e);status.textContent=`仿真加载失败: ${e.message}`;});
+start().catch(e=>{console.error(e);status.textContent=`Simulation failed to load: ${e.message}`;});
