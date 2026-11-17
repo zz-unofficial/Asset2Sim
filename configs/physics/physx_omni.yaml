@@ -1,0 +1,13 @@
+# Paths are relative to this YAML. Weights are downloaded on the server.
+upstream: ../../third_party/PhysX-Omni
+model_path: ../../weights/physx_omni
+postprocess: false
+fixed_base: false
+deformable: false
+validate_mujoco: false
+measure_resources: true
+# No timeout is imposed until a server pilot budget has been agreed.
+stage_timeout_seconds: null
+category_overrides:
+  deformable:
+    deformable: true

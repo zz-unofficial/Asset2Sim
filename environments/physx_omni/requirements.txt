@@ -1,0 +1,11 @@
+# Inference overlay after the upstream TRELLIS extension installation.
+transformers==4.50.0
+accelerate==1.4.0
+qwen-vl-utils==0.0.14
+numpy==1.26.4
+trimesh==4.4.1
+plyfile==1.0.2
+jupyter-client>=6,<8
+ipdb==0.13.13
+einops>=0.7,<1
+PyYAML>=6,<7

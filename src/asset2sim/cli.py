@@ -13,6 +13,39 @@ from asset2sim.paths import PROJECT_ROOT
 def main() -> int:
     parser = argparse.ArgumentParser(prog="asset2sim")
     commands = parser.add_subparsers(dest="command", required=True)
+    physx_omni = commands.add_parser(
+        "physx-omni", help="Run the official image-to-physical-asset pipeline"
+    )
+    physx_omni.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/physics/physx_omni.yaml"
+    )
+    physx_omni.add_argument("--manifest", type=Path, required=True)
+    physx_omni.add_argument("--sample-id", action="append")
+    physx_omni.add_argument("--output", type=Path, required=True)
+    physx_omni.add_argument("--plan", action="store_true", help="Write commands without inference")
+    physx_omni.add_argument("--validate-mujoco", action="store_true", default=None)
+    physx_omni.add_argument("--reuse-run", type=Path)
+    physx_omni.add_argument("--from-stage", choices=("infer", "decode", "export"), default="infer")
+    physx_omni.add_argument(
+        "--deformable",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override export switch, including --no-deformable baseline",
+    )
+    physx_data = commands.add_parser(
+        "prepare-physx-data", help="Prepare selected local three-category references"
+    )
+    physx_data.add_argument(
+        "--config", type=Path, default=PROJECT_ROOT / "configs/datasets/physx_omni.yaml"
+    )
+    physx_data.add_argument("--output", type=Path, required=True)
+    physx_evaluate = commands.add_parser(
+        "physx-omni-evaluate", help="Audit and evaluate physical assets without simulation"
+    )
+    physx_evaluate.add_argument("--run", type=Path, required=True)
+    physx_evaluate.add_argument("--manifest", type=Path, required=True)
+    physx_evaluate.add_argument("--output", type=Path, required=True)
+    physx_evaluate.add_argument("--sample-count", type=int, default=10000)
     physics = commands.add_parser("prepare-mesh", help="Prepare mesh geometry for physics")
     physics.add_argument("--mesh", type=Path, required=True)
     physics.add_argument("--kind", choices=("reference", "generated"), required=True)
@@ -150,6 +183,41 @@ def main() -> int:
     legacy_run.add_argument("--sample-id", action="append")
     args = parser.parse_args()
     try:
+        if args.command == "prepare-physx-data":
+            from asset2sim.data.physx_omni import prepare_dataset
+
+            result = prepare_dataset(args.config, args.output)
+            print(
+                f"Prepared {result['n_prepared']}/{result['n_selected']}; pending {len(result['pending'])}; {args.output}"
+            )
+            return 1 if result["n_failed"] else 0
+        if args.command == "physx-omni-evaluate":
+            from asset2sim.evaluation.physx_omni import evaluate_run
+
+            result = evaluate_run(
+                args.run, args.manifest, args.output, sample_count=args.sample_count
+            )
+            print(f"Static evaluation: {result['n_planned']} planned samples; {args.output}")
+            return 0
+        if args.command == "physx-omni":
+            from asset2sim.experiments.physx_omni import run_physx_omni
+
+            result = run_physx_omni(
+                args.config,
+                args.manifest,
+                args.output,
+                args.sample_id,
+                plan_only=args.plan,
+                validate_mujoco=args.validate_mujoco,
+                reuse_run=args.reuse_run,
+                from_stage=args.from_stage,
+                deformable=args.deformable,
+            )
+            print(
+                f"PhysX-Omni {result['status']}: "
+                f"{result['n_success']}/{result['n_planned']} successful; {args.output}"
+            )
+            return 1 if result["n_failed"] else 0
         if args.command == "asset-interactive":
             from asset2sim.simulation.grasp.pipeline import asset_pipeline
 

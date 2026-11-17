@@ -43,6 +43,8 @@ README 由项目负责人维护。环境、实验命令和结果分析写入对�
 
 适配器负责 `load()`、`generate(image_path, output_dir)`、`metadata()` 与 `recover()`，`parameters` 返回解析后的参数字典。`generate()` 创建样例目录，保存实际输入 `input.png` 与原始 `mesh.glb`，返回 `vertices`、`faces`、`preprocess_seconds`、`inference_seconds`、`export_seconds`、`peak_allocated_mib`；其他测量可增加字段。`metadata()` 记录权重版本、软件/设备、原始坐标轴与单位。公共运行器负责清单选择、批量调度和记录，新增模型沿用这套逻辑。
 
+PhysX-Omni 的部件物性与 URDF/MJCF 生成由 `experiments/physx_omni.py` 封装，使用 `asset2sim physx-omni` 和共享 Manifest；默认只执行官方生成阶段，MuJoCo 加载为可选检查。`data/physx_omni.py` 负责局部数据准备，`evaluation/physx_omni/` 按几何、属性、导出审计和汇总分工；对应 CLI 为 `prepare-physx-data`、`physx-omni-evaluate`。服务器安装入口为 `scripts/setup_physx_omni.sh --server`，配置和单位见 `docs/protocols/physical_properties_dynamics.md`。
+
 时间单位为秒、显存为 MiB；推理时间覆盖网络、网格构建及贴图生成，加载与导出分别计时。模型保留原始输出朝向和尺度，评测阶段使用明确的变换统一坐标。输入参考几何由评测模块使用，生成接口接收单张输入图片。
 
 ## 配置与数据约定

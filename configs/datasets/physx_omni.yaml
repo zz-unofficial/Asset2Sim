@@ -1,0 +1,29 @@
+# File selection only. No network operations are performed by prepare-physx-data.
+samples:
+  - sample_id: gso_box_v004
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+  - sample_id: gso_mug_v005
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+  - sample_id: gso_hammer_v003
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+# These are acquisition targets, not fabricated sample records or object IDs.
+pending:
+  - category: articulated
+    source: AlbertS666/PartNet-Mobility-USD
+    archive: data/Microwave.tar
+  - category: articulated
+    source: AlbertS666/PartNet-Mobility-USD
+    archive: data/FoldingChair.tar
+  - category: deformable
+    source: EPFL Texture-less Deformable Surfaces
+    requirement: first verified Cloth sequence and paired RGB/mesh frame
+  - category: deformable
+    source: EPFL Texture-less Deformable Surfaces
+    requirement: second distinct verified Cloth sequence and paired RGB/mesh frame
+downloads: []
