@@ -8,6 +8,7 @@ theme: light
 import Header from './components/Header.astro';
 import RobotDemo from './components/RobotDemo.astro';
 import GenerationResults from './components/GenerationResults.astro';
+import PhysXResults from './components/PhysXResults.astro';
 
 <Header title="Asset2Sim" authors={[]} links={[{name: 'GitHub', url: 'https://github.com/zz-unofficial/Asset2Sim', icon: 'ri:github-fill'}]} />
 
@@ -29,13 +30,11 @@ We evaluate SF3D, SPAR3D, and TRELLIS.2 on shared inputs, comparing reconstructi
 
 <GenerationResults />
 
-## Physics Adaptation
-
-Generated geometry is prepared for simulation with explicit coordinate transforms and collision representations, including convex hulls and CoACD components. Visual comparisons and geometry reports will be added as experiments proceed.
+<PhysXResults />
 
 ## Physical Simulation
 
-Controlled MuJoCo contact and dynamics experiments evaluate the behavior of prepared assets. Experimental setup, media, and measurements will be added here.
+MuJoCo contact and dynamics experiments evaluate prepared assets under controlled conditions.
 
 ## Robotic Manipulation
 

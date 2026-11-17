@@ -65,9 +65,9 @@ function render(){
  for(const [key,title,description] of available){
   const rows=Object.keys(models).map(m=>set.medians.find(r=>r.model===m&&r.metric===key));
   if(rows.some(r=>!r||r.median===''))continue;
-  const values=rows.map(r=>Number(r.median));const max=Math.max(...values)*1.1||1;
+  const values=rows.map(r=>Number(r.median));const max=Math.max(...values)*1.1||1;const best=title.includes('↓')?Math.min(...values):Math.max(...values);
   const card=node('article','metric-card');card.append(node('h3','',title),node('p','metric-context',description));
-  rows.forEach((r,i)=>{const stat=node('div','model-stat'),label=node('div','stat-label');label.append(node('span','',models[r.model]),node('strong','',format(r.median)));const track=node('div','bar-track'),fill=node('div','bar-fill');fill.style.width=`${values[i]/max*100}%`;fill.style.background=['#a9b8ad','#7b9b83','#315d42'][i];track.append(fill);stat.append(label,track);card.append(stat)});
+  rows.forEach((r,i)=>{const stat=node('div','model-stat'),label=node('div','stat-label');label.append(node('span','',models[r.model]),node('strong','',format(r.median)));const track=node('div','bar-track'),fill=node('div','bar-fill');fill.style.width=`${values[i]/max*100}%`;fill.style.background=values[i]===best?'#315d42':'#b8c5ba';track.append(fill);stat.append(label,track);card.append(stat)});
   const axis=node('div','axis');axis.append(node('span','','0'),node('span','',format(max)));card.append(axis);carousel.append(card);
   const tr=node('tr');[title,`${rows[0].n_valid_objects} / ${rows[0].n_planned_objects}`,...rows.map(r=>format(r.median))].forEach(v=>tr.append(node('td','',v)));summary.append(tr);
  }
