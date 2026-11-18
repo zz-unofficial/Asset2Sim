@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +19,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_rle(asset: Path, upstream: Path) -> dict:
+def validate_rle(asset: Path, upstream: Path, *, capture_parser_messages: bool = False) -> dict:
     """Replay official pure RLE helpers and compare every saved part coordinate."""
     import re
     import typing
@@ -41,15 +43,42 @@ def validate_rle(asset: Path, upstream: Path) -> dict:
     # Execute only pure helper definitions from the pinned, trusted upstream checkout.
     exec(compile(ast.fix_missing_locations(module), "<official-rle-helpers>", "exec"), namespace)  # noqa: S102
     checked = []
+    messages = []
+    layers = []
     for path in sorted(asset.glob("ind_*.npy")):
         index = path.stem.removeprefix("ind_")
         text = (asset / f"coord_{index}.txt").read_text()
         if not text.strip():
             raise ValueError(f"Empty RLE response: {index}")
-        runs = namespace["string_to_runs_by_z_lossless_robust"](text, D=64)
+        if capture_parser_messages:
+            from collections import Counter
+
+            counts = Counter(
+                int(value) for value in re.findall(r"^\s*(\d+)\s*:", text, re.MULTILINE)
+            )
+            layers.append(
+                {
+                    "part_id": index,
+                    "missing_layers": sorted(set(range(64)) - set(counts)),
+                    "duplicate_layers": {
+                        str(key): count for key, count in counts.items() if count > 1
+                    },
+                    "duplicate_policy": "official_parser_last_definition_wins",
+                }
+            )
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                runs = namespace["string_to_runs_by_z_lossless_robust"](text, D=64, verbose=True)
+            messages.append({"part_id": index, "messages": buffer.getvalue().splitlines()})
+        else:
+            runs = namespace["string_to_runs_by_z_lossless_robust"](text, D=64)
         decoded = namespace["decode_voxel_2drle_by_z"](runs, shape=(64, 64, 64))
         saved = np.load(path, allow_pickle=False)
         if not decoded.size or not np.array_equal(decoded, saved):
             raise ValueError(f"RLE replay differs from saved part: {index}")
         checked.append(index)
-    return {"rle_replayed_parts": checked, "rle_parser": "official_robust_parser"}
+    result = {"rle_replayed_parts": checked, "rle_parser": "official_robust_parser"}
+    if capture_parser_messages:
+        result["parser_messages"] = messages
+        result["layer_integrity"] = layers
+    return result

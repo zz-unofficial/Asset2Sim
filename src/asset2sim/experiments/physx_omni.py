@@ -223,6 +223,7 @@ def run_physx_omni(
     validate_mujoco: bool | None = None,
     reuse_run: Path | None = None,
     from_stage: str = "infer",
+    until_stage: str = "export",
     deformable: bool | None = None,
     decoder_cpu_offload: bool | None = None,
 ) -> dict[str, Any]:
@@ -234,6 +235,12 @@ def run_physx_omni(
         config["validate_mujoco"] = validate_mujoco
     if from_stage not in {"infer", "decode", "export"}:
         raise ValueError("from_stage must be infer, decode or export")
+    stages = ("infer", "decode", "export")
+    if until_stage not in stages or stages.index(until_stage) < stages.index(from_stage):
+        raise ValueError("until_stage must be at or after from_stage")
+    if config["validate_mujoco"] and until_stage != "export":
+        raise ValueError("MuJoCo validation requires the export stage")
+    requested_stages = stages[: stages.index(until_stage) + 1]
     if from_stage != "infer" and reuse_run is None:
         raise ValueError("decode/export restart requires --reuse-run")
     upstream = Path(config["upstream"])
@@ -259,6 +266,7 @@ def run_physx_omni(
         "config": config,
         "upstream_commit": git_revision(upstream),
         "manifest": str(manifest.resolve()),
+        "until_stage": until_stage,
         "execution_policy": "serial_stage_subprocesses",
         "n_planned": len(records),
         "n_success": 0,
@@ -296,7 +304,11 @@ def run_physx_omni(
         sample_config = {**config, **config["category_overrides"].get(category, {})}
         if deformable is not None:
             sample_config["deformable"] = deformable
-        commands = stage_commands(sample_config, workspace)
+        commands = [
+            (stage, argv)
+            for stage, argv in stage_commands(sample_config, workspace)
+            if stage in requested_stages
+        ]
         item: dict[str, Any] = {
             "input": record,
             "category": category,
@@ -464,9 +476,7 @@ def run_physx_omni(
             item["status"] = "failed"
             summary["n_failed"] += 1
             completed = {entry["stage"] for entry in item["stages"]}
-            for stage in ("infer", "decode", "export") + (
-                ("mujoco_load",) if config["validate_mujoco"] else ()
-            ):
+            for stage in requested_stages + (("mujoco_load",) if config["validate_mujoco"] else ()):
                 if stage not in completed:
                     item["stages"].append(
                         {"stage": stage, "status": "blocked", "reason": "previous_stage_failed"}

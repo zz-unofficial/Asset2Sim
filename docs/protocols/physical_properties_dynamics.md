@@ -254,7 +254,84 @@ Microwave 的 VLM 原文为 Cabinet / Furniture，预测木质柜体、左右两
 
 自动生成、导出对照与静态评价已经执行完成。参考部件/关节的一对一核验、输入与生成结果的视觉对照，以及有效相机坐标对应仍待本机收尾；当前关节对比和固定姿态误差的有效数量均为零。七个样本均缺少已核验的实测物性标签，密度和弹性参数仅报告模型先验及传递情况。
 
+#### 失败归因与来源核验
+
+2026-11-17 对本批七个样本进行离线追溯。7/7 的准备图、运行输入与官方保存的条件图像素一致；20/20 个部件的原始 RLE 经官方函数重新解码后与保存坐标一致。解析器没有发出跳过/修复信息。额外检查发现 Cloth 01 的0–9层存在重复定义，共11条额外记录；官方解析器后定义覆盖前定义且不告警。原先数值重放检查没有报告这一歧义，新增诊断将它单列为原始生成格式问题。历史成功计数对应当时的验证口径，解码可用性与表示无歧义性分别解释。
+
+| 案例 | 最早可观察错误 | 已有证据 | 归因边界 |
+| --- | --- | --- | --- |
+| Box | 全局类别及部件预测 | VLM 原文为桌子，部件体素已有桌面和四腿 | 印刷图案是否诱发误判仍需输入对照 |
+| Microwave | 全局类别、部件及关节预测 | VLM 为木柜、双门、两条旋转关节；参考为一条可动关节 | 灰色输入未保留源材质是已知准备差异，其因果影响待对照 |
+| Mug | 部件级体素几何生成 | 杯体 z=8、63 层分别有1,155、1,007个占用格点；y=32的极端切片分别覆盖40、38个连续中心行格点；把手投影已有异常横杆 | 封口与杆状结构在 Decoder 之前已存在；后续细节误差可能叠加 |
+| Hammer | 部件级几何及坐标表现 | 原始头部体素已呈方块形；官方导出有向上轴旋转 | 语义基本正确不等于比例与局部外形准确；所有细节的误差来源尚未分离 |
+| Cloth 02 | 全局语义及固定分组 | VLM 为桌布与桌板，全部位于固定组；A 组为空 | 柔性开关按官方代码不会为这种分组产生 flexcomp |
+
+官方论文 §3.1 的全局到局部机制将类别和部件层级作为后续几何预测先验，解释了错误结构的传播路径；§5 承认细节/复杂几何及外观指标仍有局限，但未为本批具体误判给出原因。[论文](https://arxiv.org/html/2605.21572v1#S3.SS1)、[局限性](https://arxiv.org/html/2605.21572v1#S5)。上游 [Issue #1](https://github.com/ziangcao0312/PhysX-Omni/issues/1) 有用户报告4/4结果不理想，当前可见回复没有维护者确认的根因，按独立失败线索使用。
+
+GLB 转回体素坐标使用官方 `to_glb` 中 Z-up→Y-up 变换的逆矩阵；没有使用 GT 配准。四例原生 GLB 与对应 OBJ 按官方旋转后顶点集合差异小于9×10⁻⁹，导出阶段的整体旋转保持了几何。诊断图按部件着色，不表示原始贴图。复现命令：
+
+```bash
+python -m asset2sim.evaluation.physx_omni.diagnostics \
+  --bundle .local/physx_omni/server_return_20261117 \
+  --output results/raw/physx_omni/<新的诊断run_id> \
+  --figures results/figures/physx_omni/<新的诊断run_id>
+```
+
+本次证据为 `failure_trace_run03/evidence.json`，图为 `input_voxels_mesh.png` 和 `mug_voxel_sections.png`。下一步因果验证包括：同物体改变视角或材质线索的 VLM 对照；官方示例的推理校准；同一体素在原生与显存适配 Decoder 下的结果对照。实际权重版本 metadata 尚未随回传资产保存；已有日志未见权重不匹配警告，服务器当前无法连接，待下次无卡开机补取版本记录。以上对照尚未执行。
+
 当前七个输入均可计算归一化形状诊断。固定姿态对应、参考部件匹配和实测物性标签仍需分别核验；相应项目在评价表中保留 NA。实验结论结合输入图、参考几何及原始 VLM 描述解释。
+
+#### 针对性复核与五个补充对象
+
+原始七案例保留原有结果和分母。补测包含同一对象的输入对照及五个新对象。每个条件记录实际 RGB、权重版本、模型设置、部件描述、原始 RLE、体素与阶段结果。所有已选输入均报告终态，展示图另标注样本 ID 与条件。
+
+| 复核对象 | 控制变量与产物 | 判断依据 |
+| --- | --- | --- |
+| Box | 同一包装盒，原正面与一个侧面占比更高的已有视角；保留原贴图，固定模型与图像处理 | 类别是否仍为桌子、是否仍生成四条腿。若类别改变，说明对视角敏感；要单独检验印刷图案，另做同机位的材质对照 |
+| Microwave | 同一实例、关节状态、相机、光照和裁剪，比较灰模与可核验的源材质 | 类别、可动门和旋转关节数，参考为一条可动旋转关节。源材质缺失时，额外照片只能作为输入替代示例 |
+| Mug / Hammer | 复用已保存的体素与 GLB，同坐标检查杯口、把手、锤头和手柄 | 杯口盖面、杆状把手和方形锤头已出现在体素。若需量化 Decoder 的新增偏差，再用同一体素和 seed 对比原生与卸载模式 |
+| Cloth 01 / 02 | 审计原始层定义、预测组及 D0/D1 输出，沿用已保存产物 | 单列重复层、柔性组资格、有效 flexcomp 与网格缺陷；人工修复副本单独报告 |
+
+| 新对象 | 输入与参考 | 重点检查 |
+| --- | --- | --- |
+| Bottle | `gso_bottle_v008`，已有 RGB 与 GLB | 瓶身、瓶颈、瓶盖与细颈比例；按参考判断是否应封口 |
+| Bowl | `gso_bowl_v008`，已有 RGB 与 GLB | 开口和内腔保留，作为 Mug 封口现象的跨类别检查 |
+| Frying Pan | `gso_frypan_v010`，已有 RGB 与 GLB | 浅盘内腔、长把手及两者连接；结合参考检查额外部件 |
+| Safe | PartNet-Mobility-USD 的 Safe 类别，待选一个实际实例 | 优先选择锁或键盘可辨、门半开且 URDF 可解析的实例。先冻结实际可动关节数、类型和轴，数值误差须有部件匹配与共同坐标。 [数据清单](https://huggingface.co/datasets/AlbertS666/PartNet-Mobility-USD/blob/main/table.md) |
+| T-shirt | EPFL 选一帧配对 RGB、深度、前景掩码和内参，待确定帧号 | 核验衣服类别、领口、袖口和柔性分组。官方三角网格仅覆盖七个 Cloth 序列；T-shirt 有效坐标对齐后可做可见表面深度误差和覆盖率，完整 Mesh CD/F-score 记 NA。 [EPFL 数据说明](https://www.epfl.ch/labs/cvlab/data/texless-defsurf-data/) |
+
+本机已准备三个新 GSO 样本和 Box 双视角。Box 的 `004` 与原实验输入逐像素一致。替代视角 `007` 保留印刷面，同时更清楚地显示侧面与厚度。官方 demo 固定为绿色垃圾箱图，按 `split=calibration` 记录。校准检查对象类别、部件与导出产物，不纳入定量测评。
+
+| 执行组 | 清单或配置 | 验证内容 |
+| --- | --- | --- |
+| 官方校准 | `data/manifests/physx_omni_demo.jsonl` | 一张官方图执行完整流水线，检查结构、部件网格及导出 |
+| Box 输入对照 | `configs/datasets/physx_omni_box_view.yaml` | 同一对象的两个视角均运行至 VLM 和体素检查 |
+| 补充 GSO | `configs/datasets/physx_omni_followup.yaml` | 三个已锁定对象完整运行，按开口、细颈和手柄连接检查 |
+
+Safe 待获取实际实例。下载第三方转换的 `data/Safe.tar` 或单实例文件后，先核验 Mesh/USD、URDF、半开门的实际关节状态和锁面可见性，再向补测配置加入真实 ID。T-shirt 待从 EPFL 归档提取一个同帧案例。补测配置使用 `category: deformable`、`reference_kind: visible_depth` 和 `object_class: tshirt`，填写 `sample_id`、`sequence_id`、`frame_id`、`image`、`depth`、`normal`、`foreground_mask`、`intrinsics`、有来源的 `depth_unit_m`、`pairing_verified` 与 `pairing_evidence`。准备器保留原始分辨率的深度和掩码，同时记录 RGB 变换与新内参；静态评价将完整 Mesh 指标标为 NA。数值可见深度评价待核验预测到相机的变换并接入投影后运行。
+
+回传的 Microwave USD 有材质绑定，但未找到可用于恢复输入外观的纹理文件或已解析的预览着色器纹理和基色值，导入还报告空 base 的引用未解析。以当前文件无法建立同机位的原材质对照，保留灰模基线。获得可溯源的源外观后，沿用相同实例、开合状态、机位和光照重新渲染。
+
+```bash
+conda activate asset2sim-physics
+asset2sim prepare-physx-data --config configs/datasets/physx_omni_box_view.yaml \
+  --output data/processed/physx_omni/<新Box准备目录>
+asset2sim prepare-physx-data --config configs/datasets/physx_omni_followup.yaml \
+  --output data/processed/physx_omni/<新补测准备目录>
+```
+
+开卡后使用服务器 PhysX-Omni 环境。先校准官方 demo，然后执行 Box 对照，再执行补充对象。将准备目录整体复制到服务器以保留清单内相对路径。
+
+```bash
+asset2sim physx-omni --manifest data/manifests/physx_omni_demo.jsonl \
+  --output results/raw/physx_omni/<校准运行>
+asset2sim physx-omni --manifest <Box清单> --until-stage infer \
+  --output results/raw/physx_omni/<Box复核运行>
+asset2sim physx-omni --manifest <补测清单> \
+  --output results/raw/physx_omni/<完整补测运行>
+```
+
+语义和体素复核可在 `infer` 后结束。需要继续时，用同一清单和 `--reuse-run <前序运行> --from-stage decode` 写入新目录。阶段完成计数按本次请求的阶段解释。将原始七案例、同对象输入对照和新增对象分别列入表格；每个对象检查类别、关键部件、局部几何与输出结构，保留全部已选案例的终态。采用显存卸载时在运行记录中标记。
 
 #### 接口使用与数据配置
 

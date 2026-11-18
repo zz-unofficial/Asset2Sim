@@ -27,6 +27,12 @@ def main() -> int:
     physx_omni.add_argument("--reuse-run", type=Path)
     physx_omni.add_argument("--from-stage", choices=("infer", "decode", "export"), default="infer")
     physx_omni.add_argument(
+        "--until-stage",
+        choices=("infer", "decode", "export"),
+        default="export",
+        help="Stop after validating this stage",
+    )
+    physx_omni.add_argument(
         "--decoder-cpu-offload",
         action="store_true",
         default=None,
@@ -230,6 +236,7 @@ def main() -> int:
                 validate_mujoco=args.validate_mujoco,
                 reuse_run=args.reuse_run,
                 from_stage=args.from_stage,
+                until_stage=args.until_stage,
                 deformable=args.deformable,
                 decoder_cpu_offload=args.decoder_cpu_offload,
             )

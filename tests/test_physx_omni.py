@@ -306,6 +306,16 @@ def test_real_official_rle_replay(tmp_path):
     (tmp_path / "coord_0.txt").write_text("a:0 1\n0:layer a\n")
     np.save(tmp_path / "ind_0.npy", [[0, 0, 0]])
     assert validate_rle(tmp_path, upstream)["rle_replayed_parts"] == ["0"]
+    replay = validate_rle(tmp_path, upstream, capture_parser_messages=True)
+    assert replay["parser_messages"] == [{"part_id": "0", "messages": []}]
+    with (tmp_path / "coord_0.txt").open("a") as stream:
+        stream.write("unparsed diagnostic line\n")
+    replay = validate_rle(tmp_path, upstream, capture_parser_messages=True)
+    assert any("skip line" in line for line in replay["parser_messages"][0]["messages"])
+    with (tmp_path / "coord_0.txt").open("a") as stream:
+        stream.write("0:layer a\n")
+    replay = validate_rle(tmp_path, upstream, capture_parser_messages=True)
+    assert replay["layer_integrity"][0]["duplicate_layers"] == {"0": 2}
     np.save(tmp_path / "ind_0.npy", [[1, 0, 0]])
     with pytest.raises(ValueError, match="RLE replay differs"):
         validate_rle(tmp_path, upstream)
@@ -338,3 +348,29 @@ def test_offload_choice_is_recorded_in_plan(tmp_path):
         config, manifest, tmp_path / "plan", decoder_cpu_offload=True, plan_only=True
     )
     assert result["config"]["decoder_cpu_offload"] is True
+
+
+def test_infer_only_validates_saved_voxels_without_launching_decoder(tmp_path, monkeypatch):
+    import subprocess
+
+    from asset2sim.experiments import physx_omni
+
+    config, manifest, _ = make_inputs(tmp_path)
+
+    def execute(argv, *, cwd, **kwargs):
+        assert argv[1].endswith("1vlm_demo.py")
+        asset = cwd / "ours_demo/asset"
+        asset.mkdir(parents=True)
+        (asset / "basic_info.txt").write_text("l_0: body | 1 | wood | 0.6 | 0.01 | 0.3 | fixture")
+        (asset / "coord_0.txt").write_text("fixture RLE")
+        for name in ("allind.npy", "ind_0.npy"):
+            np.save(asset / name, [[1, 2, 3]])
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(physx_omni, "git_revision", lambda _: "test")
+    monkeypatch.setattr(physx_omni.subprocess, "run", execute)
+    result = run_physx_omni(config, manifest, tmp_path / "vlm", until_stage="infer")
+    assert result["until_stage"] == "infer"
+    assert result["n_success"] == 1
+    assert [stage["stage"] for stage in result["samples"][0]["stages"]] == ["input", "infer"]
+    assert result["samples"][0]["stages"][-1]["output_valid"] is True
