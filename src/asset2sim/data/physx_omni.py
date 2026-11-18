@@ -137,6 +137,11 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
             prep = prepare_rgb(image, folder / "input.png")
             shutil.copyfile(image, folder / ("original_input" + image.suffix))
             metadata["input_preparation"] = prep
+            depth_only = spec.get("reference_kind") == "visible_depth"
+            if depth_only and (category != "deformable" or reference is not None):
+                raise ValueError(
+                    "Visible-depth reference requires a deformable sample without a mesh"
+                )
             if category == "deformable":
                 if not spec.get("sequence_id") or spec.get("frame_id") is None:
                     raise ValueError("Cloth requires sequence_id and frame_id")
@@ -156,16 +161,32 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
                             raise ValueError(f"{key} and RGB dimensions differ")
                     shutil.copyfile(source, folder / f"{key}.npz")
                     metadata["paths"][key] = f"{key}.npz"
-                for key in ("mesh_vertices", "triangles"):
-                    source = resolve(spec[key])
-                    shutil.copyfile(source, folder / source.name)
-                    metadata["paths"][key] = source.name
-                epfl_mesh(
-                    resolve(spec["mesh_vertices"]),
-                    resolve(spec["triangles"]),
-                    spec.get("triangle_index_base", 0),
-                ).export(folder / "reference.ply")
-                reference = folder / "reference.ply"
+                if depth_only:
+                    scale = float(spec["depth_unit_m"])
+                    if not np.isfinite(scale) or scale <= 0:
+                        raise ValueError("depth_unit_m must be finite and positive")
+                    with Image.open(resolve(spec["foreground_mask"])) as mask_image:
+                        mask = np.asarray(mask_image.convert("L")) > 0
+                    with np.load(folder / "depth.npz", allow_pickle=False) as data:
+                        depth = data["depth"]
+                    if mask.shape != depth.shape or not np.any(
+                        mask & np.isfinite(depth) & (depth > 0)
+                    ):
+                        raise ValueError("Foreground mask must overlap valid source depth")
+                    Image.fromarray(mask.astype(np.uint8) * 255).save(folder / "foreground.png")
+                    metadata["paths"]["foreground_mask"] = "foreground.png"
+                    metadata.update(reference_kind="visible_depth", depth_unit_m=scale)
+                else:
+                    for key in ("mesh_vertices", "triangles"):
+                        source = resolve(spec[key])
+                        shutil.copyfile(source, folder / source.name)
+                        metadata["paths"][key] = source.name
+                    epfl_mesh(
+                        resolve(spec["mesh_vertices"]),
+                        resolve(spec["triangles"]),
+                        spec.get("triangle_index_base", 0),
+                    ).export(folder / "reference.ply")
+                    reference = folder / "reference.ply"
                 intrinsic = np.asarray(spec["intrinsics"], dtype=float)
                 if intrinsic.shape != (3, 3) or not np.isfinite(intrinsic).all():
                     raise ValueError("Invalid camera intrinsics")
@@ -211,33 +232,38 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
                     _, part_mesh = scene_mesh(resolve(part["mesh"]))
                     part_mesh.export(destination)
                     metadata["part_references"][part_id] = {**part, "mesh": destination.name}
-            if reference is None or not reference.is_file():
-                raise FileNotFoundError(f"Missing reference geometry: {reference}")
-            from asset2sim.evaluation.geometry import scene_mesh
+            metadata["paths"]["image"] = "input.png"
+            if not depth_only:
+                if reference is None or not reference.is_file():
+                    raise FileNotFoundError(f"Missing reference geometry: {reference}")
+                from asset2sim.evaluation.geometry import scene_mesh
 
-            _, mesh = scene_mesh(reference)
-            metadata["reference_geometry"] = {
-                "vertices": len(mesh.vertices),
-                "faces": len(mesh.faces),
-                "bounds": mesh.bounds.tolist(),
-            }
-            if reference.parent != folder:
-                destination = folder / ("reference" + reference.suffix)
-                # GLB/PLY/STL are self-contained; external OBJ/USD dependencies remain in source.
-                if reference.suffix.lower() in {".glb", ".ply", ".stl"}:
-                    shutil.copyfile(reference, destination)
-                else:
-                    mesh.export(folder / "reference.ply")
-                    destination = folder / "reference.ply"
-                reference = destination
-            metadata["paths"].update(image="input.png", reference_mesh=reference.name)
+                _, mesh = scene_mesh(reference)
+                metadata["reference_geometry"] = {
+                    "vertices": len(mesh.vertices),
+                    "faces": len(mesh.faces),
+                    "bounds": mesh.bounds.tolist(),
+                }
+                if reference.parent != folder:
+                    destination = folder / ("reference" + reference.suffix)
+                    # GLB/PLY/STL are self-contained; external OBJ/USD dependencies remain in source.
+                    if reference.suffix.lower() in {".glb", ".ply", ".stl"}:
+                        shutil.copyfile(reference, destination)
+                    else:
+                        mesh.export(folder / "reference.ply")
+                        destination = folder / "reference.ply"
+                    reference = destination
+                metadata["paths"]["reference_mesh"] = reference.name
             write_json(folder / "sample_metadata.json", metadata)
             record = {
                 "sample_id": spec["sample_id"],
                 "object_id": base.get("object_id", spec.get("object_id", spec["sample_id"])),
-                "view_id": base.get("view_id", str(spec.get("frame_id", "provided"))),
+                "view_id": base.get(
+                    "view_id", str(spec.get("view_id", spec.get("frame_id", "provided")))
+                ),
                 "image": str(folder / "input.png"),
-                "reference_mesh": str(reference),
+                "reference_mesh": str(reference) if reference is not None else None,
+                "reference_kind": "visible_depth" if depth_only else "mesh",
                 "sample_metadata": str(folder / "sample_metadata.json"),
                 "category": category,
                 "dataset": metadata["source"],
@@ -245,9 +271,13 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
                 "split": "evaluation",
             }
             if category == "deformable":
-                record.update(sequence_id=spec["sequence_id"], frame_id=str(spec["frame_id"]),
-                              object_id=spec.get("object_id", "epfl_cloth"),
-                              object_class="cloth", evaluation_unit="sequence_case")
+                record.update(
+                    sequence_id=spec["sequence_id"],
+                    frame_id=str(spec["frame_id"]),
+                    object_id=spec.get("object_id", "epfl_cloth"),
+                    object_class=spec.get("object_class", "cloth"),
+                    evaluation_unit="sequence_case",
+                )
             records.append(record)
             item["status"] = "ok"
         except Exception as error:  # noqa: BLE001 -- retain invalid inputs in the preparation table.
@@ -256,7 +286,8 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
     for record in records:
         record["sample_metadata"] = str(Path(record["sample_metadata"]).relative_to(output))
         for key in ("image", "reference_mesh"):
-            record[key] = str(Path(record[key]).relative_to(output))
+            if record.get(key):
+                record[key] = str(Path(record[key]).relative_to(output))
     fields = [
         "sample_id",
         "category",
@@ -270,6 +301,7 @@ def prepare_dataset(config_path: Path, output: Path) -> dict[str, Any]:
         "evaluation_unit",
         "image",
         "reference_mesh",
+        "reference_kind",
         "sample_metadata",
         "split",
     ]

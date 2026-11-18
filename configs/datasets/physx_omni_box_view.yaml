@@ -1,0 +1,13 @@
+# Same textured object and reference geometry, with a deliberately more oblique view.
+samples:
+  - sample_id: gso_box_v004
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+  - sample_id: gso_box_v007
+    object_id: gso_box
+    view_id: "007"
+    category: rigid
+    source: gso32_local
+    image: ../../.local/server-backups/cfgpu-20261115/data/processed/gso32_gpu_20261115b/gso_box/views/007.png
+    reference_mesh: ../../.local/server-backups/cfgpu-20261115/data/processed/gso32_gpu_20261115b/gso_box/reference.glb

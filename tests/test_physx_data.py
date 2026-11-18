@@ -124,3 +124,36 @@ def test_same_sequence_cannot_count_as_two_core_cases(tmp_path):
     config.write_text(yaml.safe_dump(value))
     with pytest.raises(ValueError, match="distinct sequences"):
         prepare_dataset(config, tmp_path / "prepared")
+
+
+def test_visible_depth_reference_does_not_require_or_fabricate_mesh(tmp_path):
+    Image.new("L", (8, 8), 255).save(tmp_path / "mask.png")
+    config = cloth_config(
+        tmp_path,
+        reference_kind="visible_depth",
+        foreground_mask="mask.png",
+        depth_unit_m=1,
+        object_class="tshirt",
+        object_id="epfl_tshirt",
+        mesh_vertices="absent.npz",
+        triangles="absent.tri",
+    )
+    output = tmp_path / "prepared"
+    assert prepare_dataset(config, output)["n_prepared"] == 1
+    record = json.loads((output / "manifest.jsonl").read_text())
+    assert record["reference_kind"] == "visible_depth"
+    assert record["reference_mesh"] is None
+    assert record["object_class"] == "tshirt"
+    folder = output / record["sample_id"]
+    assert (folder / "foreground.png").is_file()
+    assert not list(folder.glob("*.ply"))
+
+    from asset2sim.evaluation.physx_omni.run import evaluate_run
+
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "run.json").write_text('{"samples": []}')
+    evaluated = tmp_path / "evaluated"
+    summary = evaluate_run(run, output / "manifest.jsonl", evaluated, sample_count=100)
+    assert summary["categories"]["deformable"]["geometry_valid"] == 0
+    assert "visible_depth_reference_only" in (evaluated / "geometry_metrics.csv").read_text()

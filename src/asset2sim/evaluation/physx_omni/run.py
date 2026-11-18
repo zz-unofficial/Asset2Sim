@@ -119,22 +119,25 @@ def evaluate_run(run: Path, manifest: Path, output: Path, *, sample_count: int =
                 if sample.get("sample_metadata")
                 else {}
             )
-            metrics = geometry_metrics(
-                asset,
-                Path(sample["reference_mesh"]),
-                count=sample_count,
-                prediction_to_reference=metadata.get("prediction_to_reference"),
-                reference_unit_m=metadata.get("reference_unit_m")
-                if metadata.get("absolute_scale_verified")
-                else None,
-            )
-            geometry.append(
-                {
-                    **base,
-                    "status": "ok" if metrics["complete_predicted_parts"] else "partial",
-                    **metrics,
-                }
-            )
+            if sample.get("reference_kind") == "visible_depth":
+                geometry.append({**base, "status": "NA", "reason": "visible_depth_reference_only"})
+            else:
+                metrics = geometry_metrics(
+                    asset,
+                    Path(sample["reference_mesh"]),
+                    count=sample_count,
+                    prediction_to_reference=metadata.get("prediction_to_reference"),
+                    reference_unit_m=metadata.get("reference_unit_m")
+                    if metadata.get("absolute_scale_verified")
+                    else None,
+                )
+                geometry.append(
+                    {
+                        **base,
+                        "status": "ok" if metrics["complete_predicted_parts"] else "partial",
+                        **metrics,
+                    }
+                )
         except Exception as error:  # noqa: BLE001 -- evaluate remaining samples after geometry errors.
             geometry.append({**base, "status": "failed", "reason": str(error)})
             failures.append({**base, "stage": "geometry_evaluation", "reason": str(error)})

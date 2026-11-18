@@ -1,0 +1,23 @@
+# Fixed GSO views are already available locally. Freeze the other two cases after inspecting their source records.
+samples:
+  - sample_id: gso_bottle_v008
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+  - sample_id: gso_bowl_v008
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+  - sample_id: gso_frypan_v010
+    category: rigid
+    source: gso32_local
+    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+pending:
+  - category: articulated
+    source: AlbertS666/PartNet-Mobility-USD
+    archive: data/Safe.tar
+    requirement: Select one instance with a visible lock or keypad, a partly open door, and verified URDF joints.
+  - category: deformable
+    source: EPFL Texture-less Deformable Surfaces
+    requirement: Freeze one T-shirt RGB frame with paired depth, foreground mask and intrinsics for visible-surface evaluation.
+downloads: []
