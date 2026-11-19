@@ -8,10 +8,10 @@ samples:
     category: rigid
     source: gso32_local
     source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
-  - sample_id: gso_frypan_v010
+  - sample_id: innerscene_frypan_v008
     category: rigid
-    source: gso32_local
-    source_manifest: ../../.local/local-evaluation-20261116/gso32.jsonl
+    source: innerscene_cc0
+    source_manifest: ../../data/processed/physx_omni/verified_frypan_reference02.jsonl
 pending:
   - category: articulated
     source: AlbertS666/PartNet-Mobility-USD
