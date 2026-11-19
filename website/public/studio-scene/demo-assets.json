@@ -1,0 +1,134 @@
+{
+  "hammer": {
+    "id": "gso_hammer_v003",
+    "center": [
+      -0.00045024603605270386,
+      -0.009161874651908875,
+      0.00017770007252693176
+    ],
+    "scale": 0.3051583131985259,
+    "collision": [
+      "demo_hammer_0.stl",
+      "demo_hammer_1.stl"
+    ],
+    "table_height_m": 0.152,
+    "drop_height_m": 0.31,
+    "half_width_m": [
+      0.05509,
+      0.023436
+    ],
+    "nominal_length_m": 0.3,
+    "dimension_source": "predicted"
+  },
+  "bottle": {
+    "id": "gso_bottle_v008",
+    "center": [
+      -0.00031422078609466553,
+      -0.031060397624969482,
+      -8.708983659744263e-05
+    ],
+    "scale": 0.26676456229232476,
+    "collision": [
+      "demo_bottle_0.stl",
+      "demo_bottle_1.stl",
+      "demo_bottle_2.stl"
+    ],
+    "table_height_m": 0.127,
+    "drop_height_m": 0.285,
+    "half_width_m": [
+      0.034204,
+      0.035254
+    ],
+    "nominal_length_m": 0.25,
+    "dimension_source": "predicted"
+  },
+  "bowl": {
+    "id": "gso_bowl_v008",
+    "center": [
+      0.0008754134178161621,
+      -0.030323326587677002,
+      -0.00012034177780151367
+    ],
+    "scale": 0.20016748614135102,
+    "collision": [
+      "demo_bowl_0.stl",
+      "demo_bowl_1.stl"
+    ],
+    "table_height_m": 0.036172,
+    "drop_height_m": 0.194172,
+    "half_width_m": [
+      0.0989,
+      0.1
+    ],
+    "nominal_length_m": 0.2,
+    "dimension_source": "predicted"
+  },
+  "pan": {
+    "id": "innerscene_frypan_v008",
+    "center": [
+      -3.103911876678467e-05,
+      0.005207344889640808,
+      -0.00036825239658355713
+    ],
+    "scale": 0.45757730739580477,
+    "collision": [
+      "demo_pan_0.stl",
+      "demo_pan_1.stl",
+      "demo_pan_2.stl",
+      "demo_pan_3.stl"
+    ],
+    "table_height_m": 0.033626,
+    "drop_height_m": 0.191626,
+    "half_width_m": [
+      0.11665,
+      0.22875
+    ],
+    "nominal_length_m": 0.4575,
+    "dimension_source": "reference"
+  },
+  "cabinet": {
+    "id": "partnet_microwave_7236",
+    "center": [
+      0.0011541247367858887,
+      -0.00629056990146637,
+      -0.000592455267906189
+    ],
+    "scale": 0.30371624454276797,
+    "collision": [
+      "demo_cabinet_0.stl",
+      "demo_cabinet_1.stl",
+      "demo_cabinet_2.stl"
+    ],
+    "table_height_m": 0.152,
+    "drop_height_m": 0.31,
+    "half_width_m": [
+      0.144271,
+      0.124947
+    ],
+    "nominal_length_m": 0.9,
+    "dimension_source": "predicted",
+    "display_scale": 0.3333333333333333
+  },
+  "chair": {
+    "id": "partnet_foldingchair_100526",
+    "center": [
+      -0.00010313093662261963,
+      0.00047107040882110596,
+      -0.021360039710998535
+    ],
+    "scale": 0.26669404787803513,
+    "collision": [
+      "demo_chair_0.stl",
+      "demo_chair_1.stl"
+    ],
+    "table_height_m": 0.135333,
+    "drop_height_m": 0.293333,
+    "half_width_m": [
+      0.078164,
+      0.085917
+    ],
+    "nominal_length_m": 0.8,
+    "dimension_source": "predicted",
+    "display_scale": 0.3333333333333333
+  }
+}
