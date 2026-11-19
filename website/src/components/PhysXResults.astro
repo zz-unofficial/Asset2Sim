@@ -26,7 +26,17 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   <script is:inline type="application/json" id="physx-cases" set:html={JSON.stringify(cases).replaceAll('<','\\u003c')} />
 </section>
 <script>
-  import '@google/model-viewer';
+  const viewer = document.querySelector('#physx-viewer')!;
+  const observer = new IntersectionObserver(entries => {
+    if (!entries.some(entry => entry.isIntersecting)) return;
+    observer.disconnect();
+    void import('@google/model-viewer').catch(error => {
+      console.error(error);
+      const state = viewer.parentElement?.querySelector('[role="status"]');
+      if (state) state.textContent = 'Unable to load the 3D viewer';
+    });
+  }, { rootMargin: '250px 0px' });
+  observer.observe(viewer);
   import '../research/physx.js';
 </script>
 <style is:global>

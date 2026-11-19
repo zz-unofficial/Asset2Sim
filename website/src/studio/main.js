@@ -7,31 +7,112 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 const viewport = document.querySelector('#viewport');
 const status = document.querySelector('#status');
 const base = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/studio-scene/`;
-const started = performance.now();
+
 const measurements = [];
 document.querySelector("#download").addEventListener("click", () => { const blob = new Blob([JSON.stringify(measurements, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "asset2sim-studio-measurements.json"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); });
-const fetchOk = async url => { const r = await fetch(url, {signal: AbortSignal.timeout(30000)}); if (!r.ok) throw Error(`${r.status} ${url}`); return r; };
+async function fetchResource(url, read, timeout = 120_000) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+      if (!response.ok) {
+        if (response.status < 500 && response.status !== 429) {
+          throw new Error(`HTTP ${response.status}: ${url}`, { cause: 'permanent' });
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await read(response);
+    } catch (error) {
+      if (attempt === 1 || error.cause === 'permanent') {
+        throw new Error(`${url.split('/').pop()} · ${error.message}`, { cause: error });
+      }
+      await new Promise(resolve => setTimeout(resolve, 700));
+    }
+  }
+}
+
+async function unpack(url) {
+  return fetchResource(url, async response => {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // Fetch may already have decoded a server-supplied Content-Encoding layer.
+    if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  });
+}
+
 const clamp = (x,a,b) => Math.max(a, Math.min(b,x));
 
-async function start() {
-  status.textContent = 'Initializing MuJoCo WASM…';
-  const mj = await loadMujoco({locateFile: path => path.endsWith('.wasm') ? wasmUrl : path});
-  const [xmlResponse, listResponse, assetResponse] = await Promise.all([fetchOk(base+'scene.xml'), fetchOk(base+'files.json'), fetchOk(base+'demo-assets.json')]);
-  let xml = await xmlResponse.text();
-  const assets = await assetResponse.json();
-  const names = (await listResponse.json()).filter(name => !name.startsWith('object_')).concat(Object.values(assets).flatMap(asset => asset.collision));
+export async function start() {
+  const started = performance.now();
+  const packed = typeof DecompressionStream !== 'undefined';
+  status.textContent = 'Downloading MuJoCo and scene assets…';
+  const rawRuntime = () => fetchResource(wasmUrl, response => response.arrayBuffer())
+    .then(buffer => loadMujoco({ wasmBinary: new Uint8Array(buffer) }));
+  const runtime = packed
+    ? unpack(base + 'packed/mujoco-gzip.bin')
+      .then(wasmBinary => loadMujoco({ wasmBinary }))
+      .catch(error => {
+        console.warn('Using the original MuJoCo WASM:', error);
+        return rawRuntime();
+      })
+    : rawRuntime();
+  const meshPack = packed
+    ? unpack(base + 'packed/meshes-gzip.bin').catch(error => {
+      console.warn('Loading individual scene meshes:', error);
+      return null;
+    })
+    : null;
+  const [mj, sceneXml, files, assets, pack] = await Promise.all([
+    runtime,
+    fetchResource(base + 'scene.xml', response => response.text()),
+    fetchResource(base + 'files.json', response => response.json()),
+    fetchResource(base + 'demo-assets.json', response => response.json()),
+    meshPack,
+  ]);
+  const researchBase = base.replace(/studio-scene\/$/, 'research/physx/');
+  const loadVisual = key => fetchResource(researchBase + assets[key].id + '/prediction.glb', response => response.arrayBuffer());
+  const defaultVisual = loadVisual('hammer').then(buffer => ({ buffer }), error => ({ error }));
+  let xml = sceneXml;
+  const names = files.filter(name => !name.startsWith('object_'))
+    .concat(Object.values(assets).flatMap(asset => asset.collision));
   const entries = Object.entries(assets);
   const meshDefs = entries.flatMap(([key, asset]) => asset.collision.map((file, i) => `<mesh name="demo_${key}_${i}" file="${file}"/>`)).join('');
   const maxPerAsset=3;
   const bodies = entries.flatMap(([key, asset], index) => Array.from({length:maxPerAsset},(_,slot)=>`<body name="object_${key}_${slot}" pos="${key==='hammer' && slot===0 ? .55 : 5+index*maxPerAsset+slot} ${key==='hammer' && slot===0 ? -.16 : 0} ${key==='hammer' && slot===0 ? assets.hammer.drop_height_m : 2}"><freejoint name="object_${key}_${slot}_free"/>${asset.collision.map((_,i) => `<geom type="mesh" mesh="demo_${key}_${i}" mass="${.1/asset.collision.length}" friction="1 .005 .0001" rgba="0 0 0 0"/>`).join('')}</body>`)).join('');
   xml = xml.replace(/<mesh name="object_visual_mesh"[\s\S]*?<\/asset>/, `${meshDefs}</asset>`).replace(/<body name="object"[\s\S]*?<\/body><\/worldbody>/, `${bodies}</worldbody>`);
+  const gltfLoader = new GLTFLoader();
+  const hammer = await defaultVisual;
+  if (hammer.error) throw hammer.error;
+  const hammerModel = (await gltfLoader.parseAsync(hammer.buffer, '')).scene;
   const vfs = new mj.MjVFS();
-  let loaded = 0;
-  status.textContent = `Loading scene assets 0 / ${names.length}…`;
-  await Promise.all(names.map(async name => { const r = await fetchOk(base+'assets/'+encodeURIComponent(name)); vfs.addBuffer(name,new Uint8Array(await r.arrayBuffer())); loaded++; status.textContent = `Loading scene assets ${loaded} / ${names.length}…`; }));
-  status.textContent = 'Compiling robot model…';
-  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-  const model = mj.MjModel.from_xml_string(xml,vfs);
+  let model;
+  try {
+    if (pack) {
+      const view = new DataView(pack.buffer, pack.byteOffset, pack.byteLength);
+      let offset = 0;
+      for (const name of names) {
+        const size = view.getUint32(offset, true);
+        offset += 4;
+        if (offset + size > pack.length) throw new Error('Incomplete scene mesh pack');
+        vfs.addBuffer(name, pack.subarray(offset, offset + size));
+        offset += size;
+      }
+      if (offset !== pack.length) throw new Error('Scene mesh pack does not match its manifest');
+    } else {
+      // Limit competing downloads in browsers without native gzip decompression.
+      for (let offset = 0; offset < names.length; offset += 4) {
+        const batch = names.slice(offset, offset + 4);
+        const buffers = await Promise.all(batch.map(name =>
+          fetchResource(base + 'assets/' + encodeURIComponent(name), response => response.arrayBuffer())));
+        buffers.forEach((buffer, i) => vfs.addBuffer(batch[i], new Uint8Array(buffer)));
+      }
+    }
+    status.textContent = 'Compiling robot model…';
+    await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    model = mj.MjModel.from_xml_string(xml, vfs);
+  } finally {
+    vfs.delete();
+  }
   const data = new mj.MjData(model), scratch = new mj.MjData(model);
   const site = mj.mj_name2id(model, mj.mjtObj.mjOBJ_SITE.value, 'grip_pinch');
   const slots = Object.fromEntries(entries.map(([key]) => [key,Array.from({length:maxPerAsset},(_,index)=>{const body=mj.mj_name2id(model,mj.mjtObj.mjOBJ_BODY.value,`object_${key}_${index}`);const joint=mj.mj_name2id(model,mj.mjtObj.mjOBJ_JOINT.value,`object_${key}_${index}_free`);return {key,index,body,q:model.jnt_qposadr[joint],v:model.jnt_dofadr[joint],used:key==='hammer'&&index===0,visual:null};})]));
@@ -45,10 +126,20 @@ async function start() {
   const orbit = new OrbitControls(camera,renderer.domElement); orbit.target.set(.35,0,.18); orbit.update(); document.querySelector('#camera-reset').addEventListener('click',()=>{camera.position.copy(initialCamera);orbit.target.set(.35,0,.18);orbit.update();});
   scene.add(new THREE.HemisphereLight(0xffffff,0x667788,2)); const light=new THREE.DirectionalLight(0xffffff,2); light.position.set(1,-2,3); scene.add(light);
   const visual=[];
-  const assetModels = {}; const gltfLoader = new GLTFLoader();
-  async function loadAsset(key) { if(assetModels[key]) return assetModels[key]; const spec=assets[key]; const gltf=await gltfLoader.loadAsync(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/research/physx/${spec.id}/prediction.glb`); assetModels[key]=gltf.scene; return gltf.scene; }
+  const assetModels = { hammer: hammerModel };
+  const pendingModels = new Map();
+  async function loadAsset(key) {
+    if (assetModels[key]) return assetModels[key];
+    if (!pendingModels.has(key)) {
+      pendingModels.set(key, loadVisual(key)
+        .then(buffer => gltfLoader.parseAsync(buffer, ''))
+        .then(gltf => (assetModels[key] = gltf.scene))
+        .finally(() => pendingModels.delete(key)));
+    }
+    return pendingModels.get(key);
+  }
   function attachVisual(slot,source) { const spec=assets[slot.key], group=new THREE.Group(), objectMesh=source.clone(true); objectMesh.position.set(...spec.center.map(x=>-x*spec.scale)); objectMesh.scale.setScalar(spec.scale); group.add(objectMesh); scene.add(group);slot.visual=group; }
-  attachVisual(active,await loadAsset('hammer'));
+  attachVisual(active, hammerModel);
   async function addAsset(key,point) {
     const slot=slots[key].find(item=>!item.used&&!item.loading);
     if(!slot){status.textContent=`Maximum ${maxPerAsset} ${key} objects. Reset the simulation to start again.`;return;}
@@ -90,7 +181,14 @@ async function start() {
   function solve(A,b){for(let i=0;i<6;i++){let pivot=i; for(let k=i+1;k<6;k++) if(Math.abs(A[k][i])>Math.abs(A[pivot][i])) pivot=k; [A[i],A[pivot]]=[A[pivot],A[i]]; [b[i],b[pivot]]=[b[pivot],b[i]]; if(Math.abs(A[i][i])<1e-10)return null; const d=A[i][i]; for(let j=i;j<6;j++) A[i][j]/=d; b[i]/=d; for(let k=0;k<6;k++) if(k!==i){const f=A[k][i]; for(let j=i;j<6;j++) A[k][j]-=f*A[i][j]; b[k]-=f*b[i];}} return b;}
   function ik(p,orientation){let q=goal.slice(); for(let it=0;it<18;it++){const r=residual(q,p,orientation); if(Math.hypot(...r)<.003)return q; const J=Array.from({length:6},()=>Array(6)); for(let j=0;j<6;j++){const t=q.slice();t[j]+=.0001;const rr=residual(t,p,orientation); for(let i=0;i<6;i++) J[i][j]=(rr[i]-r[i])/.0001;} const A=Array.from({length:6},(_,i)=>Array.from({length:6},(_,j)=>J.reduce((s,row)=>s+row[i]*row[j],0)+(i===j?.003:0))); const b=Array.from({length:6},(_,i)=>-J.reduce((s,row,k)=>s+row[i]*r[k],0)); const delta=solve(A,b);if(!delta)return null; q=q.map((x,i)=>clamp(x+clamp(delta[i],-.2,.2),model.jnt_range[2*i],model.jnt_range[2*i+1]));} return null;}
   let previous=performance.now(), accum=0, statsTime=previous, frames=0, stepCount=0, stepMs=0, ikClock=0; const loadSeconds=(performance.now()-started)/1000;
-  function frame(now){const wall=Math.min((now-previous)/1000,.05);previous=now;accum+=wall;ikClock+=wall;
+  function frame(now){
+    if (!demoVisible || document.hidden) {
+      previous = statsTime = now;
+      frames = stepCount = stepMs = 0;
+      requestAnimationFrame(frame);
+      return;
+    }
+    const wall=Math.min((now-previous)/1000,.05);previous=now;accum+=wall;ikClock+=wall;
     if(homing && Math.max(...goal.map((x,i)=>Math.abs(x-data.qpos[i])))<.08) homing=false;
     if(!homing && ikClock>=.05){const dir=[+keys.has('w')-keys.has('s'),+keys.has('a')-keys.has('d'),+keys.has('r')-keys.has('f')]; const norm=Math.hypot(...dir); const angular=[+keys.has('u')-keys.has('o'),+keys.has('i')-keys.has('p'),+keys.has('h')-keys.has('l')]; const angularNorm=Math.hypot(...angular); if(norm||angularNorm){const min=[.05,-.5,-.01],max=[.85,.5,.65];const next=target.map((v,i)=>clamp(v+(norm?dir[i]/norm*.06*ikClock:0),min[i],max[i])); const nextAngles=angles.map((v,i)=>clamp(v+(angularNorm?angular[i]/angularNorm*.4*ikClock:0),-Math.PI,Math.PI));const result=ik(next,nextAngles);if(result){goal=result;target=next;angles=nextAngles;if(lastKey) {latency=performance.now()-lastKey;lastKey=0;}}}ikClock=0;}
     if(!homing) grip=clamp(grip+(+keys.has('j')-keys.has('k'))*160*wall,0,255);
@@ -103,4 +201,3 @@ async function start() {
   }
   mj.mj_forward(model,data);requestAnimationFrame(frame);
 }
-start().catch(e=>{console.error(e);status.textContent=`Simulation failed to load: ${e.message}`;});

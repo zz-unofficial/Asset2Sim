@@ -24,7 +24,17 @@ const labels = { metal: 'Chrome stool', wood: 'Wood tables', ceramic: 'Ceramic v
   <script is:inline type="application/json" id="research-metrics" set:html={JSON.stringify(metrics).replaceAll('<','\\u003c')} />
 </section>
 <script>
-  import '@google/model-viewer';
+  const viewer = document.querySelector('#result-viewer')!;
+  const observer = new IntersectionObserver(entries => {
+    if (!entries.some(entry => entry.isIntersecting)) return;
+    observer.disconnect();
+    void import('@google/model-viewer').catch(error => {
+      console.error(error);
+      const state = viewer.parentElement?.querySelector('[role="status"]');
+      if (state) state.textContent = 'Unable to load the 3D viewer';
+    });
+  }, { rootMargin: '250px 0px' });
+  observer.observe(viewer);
   import '../research/results.js';
 </script>
 <style is:global>

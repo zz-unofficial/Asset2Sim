@@ -3,6 +3,9 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "predev": "node scripts/pack-studio.mjs",
+    "prestart": "node scripts/pack-studio.mjs",
+    "prebuild": "node scripts/pack-studio.mjs",
     "dev": "astro dev",
     "start": "astro dev",
     "build": "astro check && astro build",
