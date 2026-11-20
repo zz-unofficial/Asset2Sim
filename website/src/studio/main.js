@@ -78,7 +78,25 @@ export async function start() {
   const entries = Object.entries(assets);
   const meshDefs = entries.flatMap(([key, asset]) => asset.collision.map((file, i) => `<mesh name="demo_${key}_${i}" file="${file}"/>`)).join('');
   const maxPerAsset=3;
-  const bodies = entries.flatMap(([key, asset], index) => Array.from({length:maxPerAsset},(_,slot)=>`<body name="object_${key}_${slot}" pos="${key==='hammer' && slot===0 ? .55 : 5+index*maxPerAsset+slot} ${key==='hammer' && slot===0 ? -.16 : 0} ${key==='hammer' && slot===0 ? assets.hammer.drop_height_m : 2}"><freejoint name="object_${key}_${slot}_free"/>${asset.collision.map((_,i) => `<geom type="mesh" mesh="demo_${key}_${i}" mass="${.1/asset.collision.length}" friction="1 .005 .0001" rgba="0 0 0 0"/>`).join('')}</body>`)).join('');
+  function createObjectBody(key, asset, index, slot) {
+    const name = `object_${key}_${slot}`;
+    const initial = key === 'hammer' && slot === 0;
+    const positions = initial ? [.55, -.16, assets.hammer.drop_height_m] : [5 + index * maxPerAsset + slot, 0, 2];
+    const joints = asset.joints || [];
+    const geoms = asset.collision.map((_, i) => {
+      const geom = `<geom type="mesh" mesh="demo_${key}_${i}" density="${asset.density_kg_m3[i]}" friction="1 .005 .0001" rgba="0 0 0 0"/>`;
+      const joint = joints.find(item => item.part_label === asset.part_labels[i]);
+      if (!joint) return geom;
+      const [x,y,z] = joint.anchor.map((value, axis) => (value - asset.center[axis]) * asset.scale);
+      const [ax,ay,az] = joint.axis;
+      const range = joint.range_pi.map(value => value * Math.PI).join(' ');
+      return `<body name="${name}_part_${joint.part_label}"><joint name="${name}_hinge_${joint.part_label}" type="hinge" pos="${x} ${-z} ${y}" axis="${ax} ${-az} ${ay}" range="${range}" damping="0.001"/>${geom}</body>`;
+    }).join('');
+    return `<body name="${name}" pos="${positions.join(' ')}"><freejoint name="${name}_free"/>${geoms}</body>`;
+  }
+  const bodies = entries.flatMap(([key, asset], index) =>
+    Array.from({length:maxPerAsset}, (_, slot) => createObjectBody(key, asset, index, slot))
+  ).join('');
   xml = xml.replace(/<mesh name="object_visual_mesh"[\s\S]*?<\/asset>/, `${meshDefs}</asset>`).replace(/<body name="object"[\s\S]*?<\/body><\/worldbody>/, `${bodies}</worldbody>`);
   const gltfLoader = new GLTFLoader();
   const hammer = await defaultVisual;
@@ -138,13 +156,29 @@ export async function start() {
     }
     return pendingModels.get(key);
   }
-  function attachVisual(slot,source) { const spec=assets[slot.key], group=new THREE.Group(), objectMesh=source.clone(true); objectMesh.position.set(...spec.center.map(x=>-x*spec.scale)); objectMesh.scale.setScalar(spec.scale); group.add(objectMesh); scene.add(group);slot.visual=group; }
+  function attachVisual(slot, source) {
+    const spec = assets[slot.key], group = new THREE.Group(), objectMesh = source.clone(true);
+    slot.hinges = [];
+    for (const joint of spec.joints || []) {
+      const part = objectMesh.getObjectByName(`${joint.part_label}_geometry_0`);
+      if (!part || !part.parent) throw Error(`Missing visual part ${joint.part_label} for ${slot.key}`);
+      const pivot = new THREE.Group();
+      pivot.position.fromArray(joint.anchor);
+      part.parent.add(pivot);
+      pivot.attach(part);
+      const id = mj.mj_name2id(model, mj.mjtObj.mjOBJ_JOINT.value, `object_${slot.key}_${slot.index}_hinge_${joint.part_label}`);
+      slot.hinges.push({ pivot, axis: new THREE.Vector3(...joint.axis).normalize(), q: model.jnt_qposadr[id], v: model.jnt_dofadr[id] });
+    }
+    objectMesh.position.set(...spec.center.map(x => -x * spec.scale));
+    objectMesh.scale.setScalar(spec.scale);
+    group.add(objectMesh); scene.add(group); slot.visual = group;
+  }
   attachVisual(active, hammerModel);
   async function addAsset(key,point) {
     const slot=slots[key].find(item=>!item.used&&!item.loading);
     if(!slot){status.textContent=`Maximum ${maxPerAsset} ${key} objects. Reset the simulation to start again.`;return;}
     slot.loading=true;const currentGeneration=generation;
-    try{const source=await loadAsset(key);if(currentGeneration!==generation)return;const furniture=key==='cabinet'||key==='chair';if(furniture){const occupied=Object.values(slots).flat().filter(item=>item.used).map(item=>({x:data.xpos[3*item.body],y:data.xpos[3*item.body+1],half:assets[item.key].half_width_m}));const half=assets[key].half_width_m;const offsets=[0,.16,-.16,.32,-.32,.48,-.48,.64,-.64,.8,-.8,1,-1,1.2,-1.2].flatMap(x=>[0,.16,-.16,.32,-.32,.48,-.48,.64,-.64,.8,-.8,1,-1,1.2,-1.2].map(y=>[x,y])).sort((a,b)=>Math.hypot(...a)-Math.hypot(...b));const free=offsets.map(([x,y])=>new THREE.Vector2(point.x+x,point.y+y)).find(p=>Math.abs(p.x)+half[0]<1.45&&Math.abs(p.y)+half[1]<1.45&&(Math.abs(p.x)>half[0]+.20||Math.abs(p.y)>half[1]+.20)&&occupied.every(item=>Math.abs(p.x-item.x)>half[0]+item.half[0]+.02||Math.abs(p.y-item.y)>half[1]+item.half[1]+.02));if(!free){status.textContent='No clear space nearby; choose another position.';return;}point=free;}attachVisual(slot,source);slot.used=true;data.qpos.set([point.x,point.y,furniture?assets[key].table_height_m:assets[key].drop_height_m,1,0,0,0],slot.q);data.qvel.fill(0,slot.v,slot.v+6);active=slot;object=slot.body;document.querySelectorAll('[data-demo-asset]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.demoAsset===key)));mj.mj_forward(model,data);}
+    try{const source=await loadAsset(key);if(currentGeneration!==generation)return;const furniture=key==='cabinet'||key==='chair';if(furniture){const occupied=Object.values(slots).flat().filter(item=>item.used).map(item=>({x:data.xpos[3*item.body],y:data.xpos[3*item.body+1],half:assets[item.key].half_width_m}));const half=assets[key].half_width_m;const offsets=[0,.16,-.16,.32,-.32,.48,-.48,.64,-.64,.8,-.8,1,-1,1.2,-1.2].flatMap(x=>[0,.16,-.16,.32,-.32,.48,-.48,.64,-.64,.8,-.8,1,-1,1.2,-1.2].map(y=>[x,y])).sort((a,b)=>Math.hypot(...a)-Math.hypot(...b));const free=offsets.map(([x,y])=>new THREE.Vector2(point.x+x,point.y+y)).find(p=>Math.abs(p.x)+half[0]<1.45&&Math.abs(p.y)+half[1]<1.45&&(Math.abs(p.x)>half[0]+.20||Math.abs(p.y)>half[1]+.20)&&occupied.every(item=>Math.abs(p.x-item.x)>half[0]+item.half[0]+.02||Math.abs(p.y-item.y)>half[1]+item.half[1]+.02));if(!free){status.textContent='No clear space nearby; choose another position.';return;}point=free;}attachVisual(slot,source);slot.used=true;data.qpos.set([point.x,point.y,furniture?assets[key].table_height_m:assets[key].drop_height_m,1,0,0,0],slot.q);data.qvel.fill(0,slot.v,slot.v+6);for(const hinge of slot.hinges || []){data.qpos[hinge.q]=0;data.qvel[hinge.v]=0;}active=slot;object=slot.body;document.querySelectorAll('[data-demo-asset]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.demoAsset===key)));mj.mj_forward(model,data);}
     catch(error){console.error(error);status.textContent=`Unable to load asset: ${error.message}`;}finally{slot.loading=false;}
   }
   const assetButtons=document.querySelectorAll('[data-demo-asset]');
@@ -194,9 +228,9 @@ export async function start() {
     if(!homing) grip=clamp(grip+(+keys.has('j')-keys.has('k'))*160*wall,0,255);
     const t0=performance.now(); let steps=0; while(accum>=.002 && steps<25){for(let i=0;i<6;i++){commands[i]+=clamp(goal[i]-commands[i],-.65*.002,.65*.002);data.ctrl[i]=commands[i];}data.ctrl[6]=grip;mj.mj_step(model,data);accum-=.002;steps++;}stepMs+=performance.now()-t0;stepCount+=steps;
     for(const [i,mesh] of visual){mesh.position.fromArray(data.geom_xpos,3*i); const a=data.geom_xmat, n=9*i; const m=new THREE.Matrix4().set(a[n],a[n+1],a[n+2],0,a[n+3],a[n+4],a[n+5],0,a[n+6],a[n+7],a[n+8],0,0,0,0,1);mesh.quaternion.setFromRotationMatrix(m);}
-    for(const group of Object.values(slots))for(const slot of group){if(!slot.used||!slot.visual)continue;slot.visual.position.fromArray(data.xpos,3*slot.body);const q=data.xquat;slot.visual.quaternion.set(q[4*slot.body+1],q[4*slot.body+2],q[4*slot.body+3],q[4*slot.body]).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),Math.PI/2));}
+    for(const group of Object.values(slots))for(const slot of group){if(!slot.used||!slot.visual)continue;for(const hinge of slot.hinges || [])hinge.pivot.quaternion.setFromAxisAngle(hinge.axis,data.qpos[hinge.q]);slot.visual.position.fromArray(data.xpos,3*slot.body);const q=data.xquat;slot.visual.quaternion.set(q[4*slot.body+1],q[4*slot.body+2],q[4*slot.body+3],q[4*slot.body]).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),Math.PI/2));}
     const w=viewport.clientWidth,h=viewport.clientHeight;if(renderer.domElement.width!==Math.round(w*renderer.getPixelRatio())||renderer.domElement.height!==Math.round(h*renderer.getPixelRatio())){renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}orbit.update();renderer.render(scene,camera); frames++;
-    if(now-statsTime>=1000){let contacts=['no','no','no'];for(let i=0;i<data.ncon;i++){const c=data.contact.get(i); const a=c.geom1,b=c.geom2; if(model.geom_bodyid[a]===object||model.geom_bodyid[b]===object){const other=model.geom_bodyid[a]===object?b:a;if(pads.slice(0,2).includes(other))contacts[0]='yes';if(pads.slice(2).includes(other))contacts[1]='yes';if(other===table)contacts[2]='yes';}c.delete();}const height=data.xpos[3*object+2]; measurements.push({wall_s:(now-started)/1000,simulation_s:data.time,load_s:loadSeconds,fps:frames*1000/(now-statsTime),step_ms:stepMs/Math.max(stepCount,1),input_to_ik_ms:latency,object:active.key,object_count:Object.values(slots).flat().filter(slot=>slot.used).length,object_z_m:height,left_contact:contacts[0]==='yes',right_contact:contacts[1]==='yes',table_contact:contacts[2]==='yes',gripper_control:grip, target_position_m:target.slice(), target_angles_rad:angles.slice(), pinch_rotation_matrix:Array.from(data.site_xmat.slice(site*9,site*9+9))}); status.textContent=`${homing?'Homing':'Ready'} | ${active.key} height ${height.toFixed(3)} m | Objects ${Object.values(slots).flat().filter(slot=>slot.used).length} | Load ${loadSeconds.toFixed(2)} s | FPS ${(frames*1000/(now-statsTime)).toFixed(1)} | mj_step ${(stepMs/Math.max(stepCount,1)).toFixed(3)} ms/step\nInput to accepted IK: ${latency===null?'—':latency.toFixed(1)+' ms'} | Contact left / right / table: ${contacts.join(' / ')} | sim ${data.time.toFixed(1)} s`;statsTime=now;frames=stepCount=stepMs=0;}
+    if(now-statsTime>=1000){let contacts=['no','no','no'];for(let i=0;i<data.ncon;i++){const c=data.contact.get(i); const a=c.geom1,b=c.geom2; const belongs=id=>{let body=model.geom_bodyid[id];while(body>0&&body!==object)body=model.body_parentid[body];return body===object};if(belongs(a)||belongs(b)){const other=belongs(a)?b:a;if(pads.slice(0,2).includes(other))contacts[0]='yes';if(pads.slice(2).includes(other))contacts[1]='yes';if(other===table)contacts[2]='yes';}c.delete();}const height=data.xpos[3*object+2]; measurements.push({wall_s:(now-started)/1000,simulation_s:data.time,load_s:loadSeconds,fps:frames*1000/(now-statsTime),step_ms:stepMs/Math.max(stepCount,1),input_to_ik_ms:latency,object:active.key,object_count:Object.values(slots).flat().filter(slot=>slot.used).length,object_z_m:height,left_contact:contacts[0]==='yes',right_contact:contacts[1]==='yes',table_contact:contacts[2]==='yes',gripper_control:grip, target_position_m:target.slice(), target_angles_rad:angles.slice(), pinch_rotation_matrix:Array.from(data.site_xmat.slice(site*9,site*9+9))}); status.textContent=`${homing?'Homing':'Ready'} | ${active.key} height ${height.toFixed(3)} m | Objects ${Object.values(slots).flat().filter(slot=>slot.used).length} | Load ${loadSeconds.toFixed(2)} s | FPS ${(frames*1000/(now-statsTime)).toFixed(1)} | mj_step ${(stepMs/Math.max(stepCount,1)).toFixed(3)} ms/step\nInput to accepted IK: ${latency===null?'—':latency.toFixed(1)+' ms'} | Contact left / right / table: ${contacts.join(' / ')} | sim ${data.time.toFixed(1)} s`;statsTime=now;frames=stepCount=stepMs=0;}
     requestAnimationFrame(frame);
   }
   mj.mj_forward(model,data);requestAnimationFrame(frame);

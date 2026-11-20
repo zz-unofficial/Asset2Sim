@@ -18,7 +18,15 @@
       0.023436
     ],
     "nominal_length_m": 0.3,
-    "dimension_source": "predicted"
+    "dimension_source": "predicted",
+    "part_labels": [
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      600.0,
+      7850.0
+    ]
   },
   "bottle": {
     "id": "gso_bottle_v008",
@@ -40,7 +48,17 @@
       0.035254
     ],
     "nominal_length_m": 0.25,
-    "dimension_source": "predicted"
+    "dimension_source": "predicted",
+    "part_labels": [
+      2,
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      7850.0,
+      2500.0,
+      2500.0
+    ]
   },
   "bowl": {
     "id": "gso_bowl_v008",
@@ -61,7 +79,15 @@
       0.1
     ],
     "nominal_length_m": 0.2,
-    "dimension_source": "predicted"
+    "dimension_source": "predicted",
+    "part_labels": [
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      650.0,
+      650.0
+    ]
   },
   "pan": {
     "id": "innerscene_frypan_v008",
@@ -84,7 +110,19 @@
       0.22875
     ],
     "nominal_length_m": 0.4575,
-    "dimension_source": "reference"
+    "dimension_source": "reference",
+    "part_labels": [
+      3,
+      2,
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      7900.0,
+      7900.0,
+      4950.0,
+      1200.0
+    ]
   },
   "cabinet": {
     "id": "partnet_microwave_7236",
@@ -107,7 +145,53 @@
     ],
     "nominal_length_m": 0.9,
     "dimension_source": "predicted",
-    "display_scale": 0.3333333333333333
+    "display_scale": 0.3333333333333333,
+    "part_labels": [
+      2,
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      700.0,
+      700.0,
+      700.0
+    ],
+    "joints": [
+      {
+        "part_label": 0,
+        "axis": [
+          0.0,
+          1.0,
+          -0.0
+        ],
+        "anchor": [
+          -0.46671875,
+          -0.5,
+          0.017656249999999984
+        ],
+        "range_pi": [
+          -0.25,
+          0.25
+        ]
+      },
+      {
+        "part_label": 2,
+        "axis": [
+          0.0,
+          1.0,
+          -0.0
+        ],
+        "anchor": [
+          0.46296875000000004,
+          -0.5,
+          0.013437499999999991
+        ],
+        "range_pi": [
+          -0.1,
+          0.4
+        ]
+      }
+    ]
   },
   "chair": {
     "id": "partnet_foldingchair_100526",
@@ -129,6 +213,33 @@
     ],
     "nominal_length_m": 0.8,
     "dimension_source": "predicted",
-    "display_scale": 0.3333333333333333
+    "display_scale": 0.3333333333333333,
+    "part_labels": [
+      1,
+      0
+    ],
+    "density_kg_m3": [
+      7850.0,
+      1200.0
+    ],
+    "joints": [
+      {
+        "part_label": 0,
+        "axis": [
+          1.0,
+          0.0,
+          -0.0
+        ],
+        "anchor": [
+          -0.5,
+          0.09046874999999999,
+          -0.044062500000000004
+        ],
+        "range_pi": [
+          -0.6333333333333333,
+          0.0
+        ]
+      }
+    ]
   }
 }
