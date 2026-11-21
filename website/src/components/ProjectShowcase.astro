@@ -1,0 +1,81 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const tasks = [
+  { id: 'put_the_bowl_on_the_plate', title: 'Put the bowl on the plate' },
+  { id: 'put_the_bowl_on_the_stove', title: 'Put the bowl on the stove' },
+  { id: 'put_the_bowl_on_top_of_the_cabinet', title: 'Put the bowl on top of the cabinet' },
+  { id: 'put_the_wine_bottle_on_the_rack', title: 'Put the wine bottle on the rack' },
+  { id: 'put_the_wine_bottle_on_top_of_the_cabinet', title: 'Put the wine bottle on top of the cabinet' },
+];
+const demos = [
+  { file: 'hammer_grasps.mp4', label: 'Center of mass & grasp balance', title: 'Hammer grasping', description: 'Grasp the hammer at different positions to observe balance during lifting.' },
+  { file: 'bottle_interaction.mp4', label: 'Collision & rolling', title: 'Bottle interaction', description: 'Tip the bottle over, then push it from the side to observe rolling.' },
+  { file: 'cabinet_open.mp4', label: 'Articulated mechanisms', title: 'Cabinet door', description: 'Move the generated cabinet door through its hinge using the robot.' },
+  { file: 'folding_chair.mp4', label: 'Articulated mechanisms', title: 'Folding chair', description: 'Grip the seat, fold it up, and return it to its starting position.' },
+];
+---
+<section class="showcase not-prose full-bleed" id="demonstrations">
+  <div class="showcase-wrap">
+    <p class="showcase-kicker">ROBOTIC INTERACTION</p>
+    <div class="showcase-heading"><div><h2>Assets in action<span>.</span></h2><p>Explore zero-shot transfer to LIBERO-Goal and physical interactions with generated assets.</p></div></div>
+    <div class="showcase-title"><div><span class="showcase-label">ZERO-SHOT TRANSFER</span><h3>LIBERO-Goal tasks</h3><p class="showcase-description">A frozen Cosmos Policy controls the robot to complete five tasks with transferred generated assets. Each video compares the original LIBERO scene with the asset-transfer scene.</p></div><div class="showcase-nav"><button type="button" data-direction="-1" aria-label="Previous task">←</button><button type="button" data-direction="1" aria-label="Next task">→</button></div></div>
+    <div class="showcase-player"><video id="transfer-video" src={`${base}/research/videos/zero-shot/${tasks[0].id}.mp4`} muted playsinline controls preload="metadata" aria-label={tasks[0].title}></video><div class="showcase-caption"><span>LIBERO-Goal</span><strong id="transfer-title">{tasks[0].title}</strong><span id="transfer-count">01 / 05</span></div></div>
+    <div class="showcase-tasks" role="group" aria-label="Choose a LIBERO task">{tasks.map((task, index) => <button type="button" data-task={index} data-src={`${base}/research/videos/zero-shot/${task.id}.mp4`} aria-pressed={index === 0 ? 'true' : 'false'}>{task.title}</button>)}</div>
+    <div class="showcase-title physical-title"><div><span class="showcase-label">PHYSICAL INTERACTION</span><h3>Robot and generated assets</h3><p class="showcase-description">The robot interacts with generated assets to demonstrate grasp balance, collision, rolling, and articulated motion.</p></div></div>
+    <div class="physical-grid">{demos.map(demo => <article><video src={`${base}/research/videos/physical/${demo.file}`} muted playsinline loop preload="metadata" aria-label={demo.title}></video><div><span>{demo.label}</span><h4>{demo.title}</h4><p>{demo.description}</p></div></article>)}</div>
+  </div>
+</section>
+<script>
+  const section = document.querySelector<HTMLElement>('#demonstrations')!;
+  const player = section.querySelector<HTMLVideoElement>('#transfer-video')!;
+  const buttons = [...section.querySelectorAll<HTMLButtonElement>('[data-task]')];
+  const title = section.querySelector<HTMLElement>('#transfer-title')!;
+  const count = section.querySelector<HTMLElement>('#transfer-count')!;
+  const physicalVideos = [...section.querySelectorAll<HTMLVideoElement>('.physical-grid video')];
+  let selected = 0;
+  let transferVisible = false;
+  let physicalVisible = false;
+  let generation = 0;
+  function selectTask(index: number) {
+    selected = (index + buttons.length) % buttons.length;
+    const button = buttons[selected];
+    buttons.forEach((item, i) => item.setAttribute('aria-pressed', String(i === selected)));
+    title.textContent = button.textContent?.trim() || '';
+    count.textContent = `${String(selected + 1).padStart(2, '0')} / ${String(buttons.length).padStart(2, '0')}`;
+    player.setAttribute('aria-label', title.textContent);
+    player.classList.remove('task-transition');
+    void player.offsetWidth;
+    player.classList.add('task-transition');
+    player.src = button.dataset.src!;
+    if (transferVisible && !document.hidden) void player.play().catch(() => {});
+  }
+  buttons.forEach((button, index) => button.addEventListener('click', () => selectTask(index)));
+  section.querySelectorAll<HTMLButtonElement>('[data-direction]').forEach(button => button.addEventListener('click', () => selectTask(selected + Number(button.dataset.direction))));
+  player.addEventListener('ended', () => selectTask(selected + 1));
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (entry.target === player) transferVisible = entry.isIntersecting;
+      else physicalVisible = entry.isIntersecting;
+    }
+    updatePlayback();
+  }, { threshold: 0.15 });
+  function updatePlayback() {
+    const currentGeneration = ++generation;
+    if (transferVisible && !document.hidden) void player.play().catch(() => {});
+    else player.pause();
+    if (physicalVisible && !document.hidden) {
+      // Start each clip at the same moment; each loops at its own duration.
+      physicalVideos.forEach(video => { video.currentTime = 0; });
+      requestAnimationFrame(() => {
+        if (currentGeneration !== generation) return;
+        physicalVideos.forEach(video => { void video.play().catch(() => {}); });
+      });
+    } else physicalVideos.forEach(video => video.pause());
+  }
+  observer.observe(player);
+  observer.observe(section.querySelector('.physical-grid')!);
+  document.addEventListener('visibilitychange', updatePlayback);
+</script>
+<style>
+.showcase{background:#f6f7f4;color:#17251d;padding:64px 24px 80px;font-family:system-ui,sans-serif}.showcase-wrap{max-width:1320px;margin:auto}.showcase-kicker{border-top:1px solid #bdc8be;padding-top:14px;color:#47735c;font-size:13px;font-weight:700;letter-spacing:.12em}.showcase-heading{margin:34px 0 50px}.showcase-heading h2{font-size:clamp(38px,5vw,64px);font-weight:650;letter-spacing:-.055em;line-height:1;margin:0}.showcase-heading h2 span{color:#71a67c}.showcase-heading p{font-size:16px;color:#69746d;line-height:1.6;margin:16px 0 0}.showcase-title{display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:18px}.showcase-label{font-size:12px;letter-spacing:.12em;font-weight:700;color:#718077}.showcase-description{font-size:15px;line-height:1.6;color:#69746d;max-width:850px;margin:10px 0 0}.showcase-title h3{font-size:clamp(25px,3vw,36px);letter-spacing:-.035em;margin:8px 0 0}.showcase-nav{display:flex;gap:8px}.showcase-nav button,.showcase-tasks button{border:1px solid #d5e0d6;border-radius:8px;background:#fff;color:#405b49;cursor:pointer}.showcase-nav button{font-size:20px;padding:8px 15px}.showcase-player{overflow:hidden;border:1px solid #dce3dd;border-radius:14px;background:#fff}.showcase-player video{display:block;width:100%;max-height:630px;aspect-ratio:16/9;object-fit:contain;background:#111}@keyframes task-enter{from{opacity:.3;transform:translateX(2%)}to{opacity:1;transform:translateX(0)}}.showcase-player video.task-transition{animation:task-enter .32s ease-out}@media(prefers-reduced-motion:reduce){.showcase-player video.task-transition{animation:none}}.showcase-caption{display:flex;align-items:center;gap:18px;padding:18px 22px}.showcase-caption span{font-size:12px;color:#718077}.showcase-caption span:last-child{margin-left:auto;white-space:nowrap}.showcase-caption strong{font-size:18px}.showcase-tasks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.showcase-tasks button{font-size:14px;padding:10px 14px;text-align:left}.showcase-tasks button[aria-pressed=true]{background:#203c2c;border-color:#203c2c;color:#fff}.physical-title{margin-top:72px}.physical-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.physical-grid article{overflow:hidden;border:1px solid #dce3dd;border-radius:12px;background:#fff}.physical-grid video{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:#151a17}.physical-grid article div{padding:16px}.physical-grid article span{font-size:12px;color:#718077}.physical-grid h4{font-size:17px;margin:6px 0 0;color:#203c2c}.physical-grid article p{font-size:13px;line-height:1.5;color:#69746d;margin:8px 0 0}@media(max-width:900px){.physical-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:520px){.showcase{padding:48px 16px 60px}.showcase-caption{flex-wrap:wrap}.showcase-caption strong{font-size:16px}.showcase-tasks button{font-size:13px}.physical-grid{gap:8px}.physical-grid article div{padding:11px}.physical-grid h4{font-size:15px}}
+</style>

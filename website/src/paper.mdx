@@ -9,12 +9,15 @@ import Header from './components/Header.astro';
 import RobotDemo from './components/RobotDemo.astro';
 import GenerationResults from './components/GenerationResults.astro';
 import PhysXResults from './components/PhysXResults.astro';
+import ProjectShowcase from './components/ProjectShowcase.astro';
 
 <Header title="Asset2Sim" authors={[]} links={[{name: 'GitHub', url: 'https://github.com/zz-unofficial/Asset2Sim', icon: 'ri:github-fill'}]} />
 
 <nav aria-label="Project sections" className="not-prose flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm">
-  <a href="#overview">Overview</a><a href="#method">Method</a><a href="#3d-generation">3D Generation</a><a href="#physics-adaptation">Physics Adaptation</a><a href="#interactive-demo">Interactive Demo</a>
+  <a href="#demonstrations">Demonstrations</a><a href="#overview">Overview</a><a href="#method">Method</a><a href="#3d-generation">3D Generation</a><a href="#physics-adaptation">Physics Adaptation</a><a href="#interactive-demo">Interactive Demo</a>
 </nav>
+
+<ProjectShowcase />
 
 ## Overview
 
